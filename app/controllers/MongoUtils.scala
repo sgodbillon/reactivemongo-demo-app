@@ -19,7 +19,7 @@ trait MongoController {
       new AkkaPromise(connection.waitForPrimary(timeout)).flatMap(e => {println(e); whenReady})
     }
   }
-  
+
   def MongoFutureResult(whenReady: => Future[Result])(implicit connection: MongoConnection) = {
     Async {
       implicit val timeout = Timeout(1 seconds)
@@ -49,7 +49,7 @@ trait MongoController {
         } else NotFound
       })
   }
-  
+
   def gridFSBodyParser(gfs: GridFS) :BodyParser[Seq[Promise[PutResult]]] = BodyParsers.parse.Multipart.multipartParser { headers =>
     val filename = headers.get("content-disposition").flatMap(_.split(';').map(_.trim).find(_.startsWith("filename=")).map(_.drop("filename=\"".length).dropRight(1)))
     val contentType = headers.get("content-type").map(_.trim)
