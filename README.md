@@ -59,7 +59,30 @@ val articlesPublishedByStephane = collection.find(query)
 val list = collect[List, Article](articlesPublishedByStephane)
 ```
 
+In JSON, the query would look like this:
+```json
+{
+  "publisher": "Stephane"
+}
+```
+
 ### Sort a query
+
+Sorting is as easy as writing a query. In fact, we may just write the following (in JSON):
+
+```json
+{
+  "$query": {
+    "publisher": "Stephane"
+  },
+  "$orderby": {
+    "creationDate": 1
+  }
+}
+```
+
+This will find all the articles published by Stephane and order the results by the creationDate (the older comes first).
+The original query is encapsulated in a `$query` subdocument, and the sort criteria is in an object named `$orderby`.
 
 ### Update
 
