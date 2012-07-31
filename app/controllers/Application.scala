@@ -1,23 +1,22 @@
 package controllers
 
+import models._
+
+import akka.dispatch.Future
 import play.api._
+import play.api.libs.concurrent._
 import play.api.libs.iteratee._
 import play.api.mvc._
 import play.api.Play.current
-import play.api.data.Form
 import play.modules.mongodb.MongoAsyncPlugin
-import org.asyncmongo.bson._
+
 import org.asyncmongo.api._
-import org.asyncmongo.handlers.DefaultBSONHandlers._
+import org.asyncmongo.bson._
 import org.asyncmongo.gridfs._
-import models._
-import play.api.libs.concurrent._
+import org.asyncmongo.handlers.DefaultBSONHandlers._
+
 import org.joda.time._
-import org.asyncmongo.protocol.commands.GetLastError
-import org.asyncmongo.protocol.commands.FindAndModify
-import org.asyncmongo.protocol.commands.Remove
-import akka.dispatch.Future
-import org.asyncmongo.actors.MongoDBSystem
+
 
 object Articles extends Controller with MongoController {
   implicit val connection = MongoAsyncPlugin.connection
