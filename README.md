@@ -21,3 +21,17 @@ The following features of MongoAsync driver are covered:
 * (Non-blocking) queries, updates, deletes
 * (Non-blocking) GridFS storage
 * Streaming files from and into GridFS
+
+## Glimpse at MongoDB features with MongoAsync
+
+### A word about the MongoDB's model
+
+### Simple query
+
+### Sort a query
+
+### Update
+
+### Delete
+
+### GridFS
