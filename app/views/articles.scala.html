@@ -1,0 +1,35 @@
+@(articles: List[models.Article], activeSort: String)
+
+@main("Welcome to Play 2.0") {
+  <div class="row">
+    <div class="span12">
+      <h2>Available articles</h2>
+      <div id="sort">
+        <span>Sort by:</span>
+        <ul class="nav nav-pills">
+          <li @if(activeSort == "title"){class="active"}><a href="@routes.Articles.index?sort=title">title</a></li>
+          <li @if(activeSort == "-title"){class="active"}><a href="@routes.Articles.index?sort=-title">-title</a></li>
+          <li @if(activeSort == "publisher"){class="active"}><a href="@routes.Articles.index?sort=publisher">publisher</a></li>
+          <li @if(activeSort == "-publisher"){class="active"}><a href="@routes.Articles.index?sort=-publisher">-publisher</a></li>
+          <li @if(activeSort == "creationDate"){class="active"}><a href="@routes.Articles.index?sort=creationDate">creation</a></li>
+          <li @if(activeSort == "-creationDate"){class="active"}><a href="@routes.Articles.index?sort=-creationDate">-creation</a></li>
+          <li @if(activeSort == "updateDate"){class="active"}><a href="@routes.Articles.index?sort=updateDate">update</a></li>
+          <li @if(activeSort == "-updateDate"){class="active"}><a href="@routes.Articles.index?sort=-updateDate">-update</a></li>
+          <li @if(activeSort == "none"){class="active"}><a href="@routes.Articles.index">none</a></li>
+        </ul>
+      </div>
+      @if(articles.isEmpty) {
+        <p>No articles available yet.</p>
+      } else {
+      <ul>
+      @articles.map { article =>
+        <li><a href="@routes.Articles.showEditForm(article.id.get.stringify)">@article.title</a> <em>by @article.publisher</em> (last modified : @article.updateDate.map(u => org.joda.time.format.DateTimeFormat.forPattern("MMM dd, yyyy").print(u)).orElse(Some("n/a"))) - <a href="@routes.Articles.delete(article.id.get.stringify)" class="delete">delete</a></li>
+      }
+      </ul>
+      }
+      <div>
+        <a href="@routes.Articles.showCreationForm">Create</a>
+      </div>
+    </div>
+  </div>
+}

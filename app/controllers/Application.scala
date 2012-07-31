@@ -9,83 +9,153 @@ import play.modules.mongodb.MongoAsyncPlugin
 import org.asyncmongo.bson._
 import org.asyncmongo.api._
 import org.asyncmongo.handlers.DefaultBSONHandlers._
+import org.asyncmongo.gridfs._
 import models._
-import play.api.libs.concurrent.Promise
+import play.api.libs.concurrent._
+import org.joda.time._
+import org.asyncmongo.protocol.commands.GetLastError
+import org.asyncmongo.protocol.commands.FindAndModify
+import org.asyncmongo.protocol.commands.Remove
+import akka.dispatch.Future
+import org.asyncmongo.actors.MongoDBSystem
 
-object Application extends Controller with MongoController {
+object Articles extends Controller with MongoController {
   implicit val connection = MongoAsyncPlugin.connection
+  
   val db = MongoAsyncPlugin.db
-
-  def index = Action { request =>
-    val sort = request.queryString.get("sort").flatMap { sort =>
-      if(!sort.isEmpty) {
-        Some(Bson(sort.head -> BSONInteger(1)))
-      } else None
-    }
+  val collection = db("articles")
+  val gridFS = new GridFS(db, "attachments")
+  
+  def index = Action { implicit request =>
     MongoPromiseResult {
-      implicit val userReader = User.UserBSONReader
-      val query = sort.map(sort => Bson("$orderby" -> sort.toDocument, "$query" -> Bson().toDocument)).getOrElse(Bson())
-      println(query)
-      val cursor = db("users").find(query)
-      val list = collect[List, User](cursor)
-      list.map { users =>
-        Ok(views.html.index(users))
+      implicit val reader = Article.ArticleBSONReader
+      val query = Bson()
+      val sort = getSort(request)
+      if(sort.isDefined) {
+        query += "$orderby" -> sort.get.toDocument
+        query += "$query" -> Bson().toDocument
+      }
+      val found = collection.find(query)
+      val activeSort = request.queryString.get("sort").flatMap(_.headOption).getOrElse("none")
+      collect[List, Article](collection.find(query)).map { articles =>
+        Ok(views.html.articles(articles, activeSort))
       }
     }
   }
   
-  
-  def createForm = userForm(None)
-  
-  def editForm(id: String) = userForm(Some(id))
-  
-  def userForm(maybeId: Option[String]) = Action {
-    implicit val userReader = User.UserBSONReader
-    maybeId.map { id =>
-      MongoPromiseResult {
-        val objectId = new BSONObjectID(id)
-        val futureCursor = db("users").find(Bson("_id" -> objectId))
-        val futureMaybeUser = collect[Set, User](futureCursor).map(_.headOption)
-        futureMaybeUser.map { maybeUser =>
-          maybeUser.map { user =>
-            Ok(views.html.editUser(false, User.form.fill(user)))
-          }.getOrElse(NotFound)
-        }
-      }
-    }.getOrElse(Ok(views.html.editUser(true, User.form)))
+  def showCreationForm = Action {
+    Ok(views.html.editArticle(None, Article.form, None))
   }
   
-  def createUser = Action { implicit request =>
-    User.form.bindFromRequest.fold(
-      errors => Ok(views.html.editUser(false, errors)),
-      user => MongoFutureResult {
-        db("users").insert(user)(User.UserBSONWriter).map { _ =>
-          Redirect(routes.Application.index())
+  def showEditForm(id: String) = Action {
+    implicit val reader = Article.ArticleBSONReader
+    MongoPromiseResult {
+      val objectId = new BSONObjectID(id)
+      val futureCursor = collection.find(Bson("_id" -> objectId))
+      val futureMaybeUser = collect[Set, Article](futureCursor).map(_.headOption)
+      futureMaybeUser.flatMap { maybeArticle =>
+        maybeArticle.map { article =>
+          collect[List, ReadFileEntry](gridFS.find(Bson("article" -> article.id.get))).map { files =>
+            val filesWithId = files.map { file =>
+              file.id.asInstanceOf[BSONObjectID].stringify -> file
+            }
+            Ok(views.html.editArticle(Some(id), Article.form.fill(article), Some(filesWithId)))
+          }
+        }.getOrElse(Promise.pure(NotFound))
+      }
+    }
+  }
+  
+  def create = Action { implicit request =>
+    Article.form.bindFromRequest.fold(
+      errors => Ok(views.html.editArticle(None, errors, None)),
+      article => MongoFutureResult {
+        collection.insert(article.copy(creationDate = Some(new DateTime()), updateDate = Some(new DateTime()))).map( _ =>
+          Redirect(routes.Articles.index)
+        )
+      }
+    )
+  }
+  
+  def edit(id: String) = Action { implicit request =>
+    Article.form.bindFromRequest.fold(
+      errors => Ok(views.html.editArticle(Some(id), errors, None)),
+      article => MongoFutureResult {
+        val objectId = new BSONObjectID(id)
+        val modifier = Bson(
+          "$set" -> Bson(
+            "updateDate" -> BSONDateTime(new DateTime().getMillis),
+            "title" -> BSONString(article.title),
+            "content" -> BSONString(article.content),
+            "publisher" -> BSONString(article.publisher)).toDocument)
+        collection.update(Bson("_id" -> objectId), modifier).map { _ =>
+          Redirect(routes.Articles.index)
         }
       }
     )
   }
   
-  def editUser(id: String) = Action { implicit request =>
-    implicit val userWriter = User.UserBSONWriter
-    User.form.bindFromRequest.fold(
-      errors => Ok(views.html.editUser(true, errors)),
-      user => MongoFutureResult {
-        val objectId = new BSONObjectID(id)
-        db("users").update(Bson("_id" -> objectId), user.copy(id = Some(objectId))).map { _ =>
-          Redirect(routes.Application.index())
+  def delete(id: String) = Action {
+    implicit val ec = MongoConnection.system
+    MongoPromiseResult {
+      collect[List, ReadFileEntry](gridFS.find(Bson("article" -> new BSONObjectID(id)))).flatMap { files =>
+        val cr = files.map { file =>
+          gridFS.chunks.remove(Bson("files_id" -> file.id)).flatMap { h =>
+            gridFS.files.remove(Bson("_id" -> file.id))
+          }
         }
-      }
-    )
+        new AkkaPromise(Future.sequence(cr))
+      }.flatMap { _ =>
+        new AkkaPromise(collection.remove(Bson("_id" -> new BSONObjectID(id))))
+      }.map(_ => Ok).recover { case _ => InternalServerError}
+    }
   }
   
-  import play.api.data._
-  import play.api.data.Forms._
-  import play.api.data.validation.Constraints._
-
-  val searchForm = Form(
-    mapping(
-      "name" -> text
-    )(s => s)(s => Some(s))
-  )
+  def saveAttachment(id: String) = Action(gridFSBodyParser(gridFS)) { request =>
+    implicit val reader = Article.ArticleBSONReader
+    val uploaded = collect[List, Article](collection.find(Bson("_id" -> new BSONObjectID(id)))).map(_.headOption)
+    MongoPromiseResult {
+      uploaded.filter(_.isDefined).flatMap { o =>
+        val article = o.get
+        val tt = Promise.sequence(request.body).flatMap { jj => 
+          val fileId = jj.head.id
+          new AkkaPromise(gridFS.files.update(Bson("_id" -> fileId), Bson("$set" -> Bson("article" -> article.id.get).toDocument)))
+        }.map { _ =>
+          Redirect(routes.Articles.showEditForm(id))
+        }
+        tt
+      }
+    }
+  }
+  
+  def getAttachment(id: String) = Action {
+    MongoPromiseResult {
+      serve(gridFS.find(Bson("_id" -> new BSONObjectID(id))))
+    }
+  }
+  
+  def removeAttachment(id: String) = Action {
+    MongoFutureResult {
+      gridFS.files.remove(Bson("_id" -> new BSONObjectID(id))).flatMap { _ =>
+        gridFS.chunks.remove(Bson("files_id" -> new BSONObjectID(id))).map { _ =>
+          Ok
+        }
+      }.recover { case _ => InternalServerError }
+    }
+  }
+  
+  private def getSort(request: Request[_]) = {
+    request.queryString.get("sort").map { fields =>
+      val orderBy = Bson()
+      for(field <- fields) {
+        val order = if(field.startsWith("-"))
+          field.drop(1) -> -1
+        else field -> 1
+        
+        if(order._1 == "title" || order._1 == "publisher" || order._1 == "creationDate" || order._1 == "updateDate")
+          orderBy += order._1 -> BSONInteger(order._2)
+      }
+      orderBy
+    }
+  }
 }

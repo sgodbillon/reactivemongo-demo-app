@@ -1,0 +1,40 @@
+@(id: Option[String], form: Form[models.Article], files: Option[List[(String, org.asyncmongo.gridfs.ReadFileEntry)]])
+@import helper.twitterBootstrap._
+
+@main("Welcome to Play 2.0") {
+  <div class="row">
+  <div class="span8">
+  <h2>
+    @if(!id.isDefined) {
+      Add
+    } else {
+      Edit
+    } an article</h2>
+  @helper.form(action = (if(!id.isDefined) routes.Articles.create else routes.Articles.edit(id.get)), 'class -> "form-horizontal") {
+    @helper.inputText(form("title"))
+    @helper.inputText(form("publisher"))
+    @helper.textarea(form("content"))
+    <div class="form-actions">
+      <input class="btn btn-primary" type="submit">
+    </div>
+  }
+  </div>
+  <div class="span4">
+  <h2>Attachments</h2>
+  @if(id.isDefined) {
+    @if(files.isDefined) {
+    <ul>
+      @files.get.map { file =>
+      <li><a href="@routes.Articles.getAttachment(file._1)">@file._2.filename</a> - <a class="delete" href="@routes.Articles.removeAttachment(file._1)">delete</a></li>
+      }
+    </ul>
+    }
+    @helper.form(action = routes.Articles.saveAttachment(id.get), 'enctype -> "multipart/form-data") {
+      <input type="file" name="picture">
+      <div>
+        <input type="submit" class="btn">
+      </div>
+    }
+  }
+  </div>
+}

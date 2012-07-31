@@ -31,6 +31,25 @@ trait MongoController {
     Cursor.enumerate(futureCursor) |>>> Iteratee.fold(cbf.apply) { (builder, t :T) => builder += t }.map(_.result)
   }
 
+  def serve(foundFile: Future[Cursor[ReadFileEntry]]) = {
+    new AkkaPromise(foundFile.map { cursor =>
+        // there is a match
+        if(cursor.iterator.hasNext) {
+          val file = cursor.iterator.next
+          SimpleResult(
+            // prepare the header
+            header = ResponseHeader(200, Map(
+                CONTENT_LENGTH -> ("" + file.length),
+                CONTENT_DISPOSITION -> ("attachment; filename=\"" + file.filename + "\""),
+                CONTENT_TYPE -> file.contentType.getOrElse("application/octet-stream")
+            )),
+            // give Play this file enumerator
+            body = file.enumerate
+          )
+        } else NotFound
+      })
+  }
+  
   def gridFSBodyParser(gfs: GridFS) :BodyParser[Seq[Promise[PutResult]]] = BodyParsers.parse.Multipart.multipartParser { headers =>
     val filename = headers.get("content-disposition").flatMap(_.split(';').map(_.trim).find(_.startsWith("filename=")).map(_.drop("filename=\"".length).dropRight(1)))
     val contentType = headers.get("content-type").map(_.trim)
