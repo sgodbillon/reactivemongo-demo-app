@@ -24,7 +24,9 @@ The following features of MongoAsync driver are covered:
 
 ## A Glimpse at MongoDB Features with MongoAsync
 
-### A Word About the MongoDB's Model
+This application uses some concepts from MongoDB that we will explain in this section.
+
+### A Word About the MongoDB
 
 > MongoDB (from "humongous") is a scalable, high-performance, open source NoSQL database.
 
@@ -162,3 +164,32 @@ collection.remove(Bson("_id" -> new BSONObjectID(id)).onComplete {
 ```
 
 ### GridFS
+
+GridFS is a specification for storing large files in MongoDB. It allows to store potentially large files into MongoDB, with their metadata. Thus, it provides a file storage that can replicated and sharded like any other collection.
+
+GridFS is very simple in its approach: the files are cut into chunks that are written into a fs.chunks collection. Their metadata are saved in a fs.files collection.
+
+```javascript
+> db.fs.files.find().limit(1)
+{ "_id" : ObjectId("50181f15e0f8477d00a5859e"), "article" : ObjectId("50181efbe0f8477f00a5859d"), "chunkSize" : 262144, "contentType" : "application/octet-stream", "filename" : "archive.zip", "length" : 36018804, "uploadDate" : ISODate("2012-07-31T18:08:25.175Z") }
+> db.fs.chunks.find({}, {data: 0}).limit(1) // we strip data :)
+{ "_id" : ObjectId("50181f1806e0582d8ba37dea"), "files_id" : ObjectId("50181f15e0f8477d00a5859e"), "n" : 124}
+```
+
+MongoAsync allows to stream those files from and into GridFS, in a non-blocking way. Let's take a look to an example:
+
+```scala
+val name = "archive.zip"
+val contentType = "application/octet-stream"
+val gridFS = new GridFS(db, "attachments")
+/* an iteratee (a consumer) that will get chunks of byte from a enumerator (producer)
+ * and will store them into the attachments.chunks collection. */
+val iteratee = gridFS.save(name, None, contentType)
+// an enumerator (producer of chunks), which chunks come from a file on the filesystem
+val enumerator = Enumerator.fromFile("/Users/sgo/archive.zip", 262144)
+// apply this enumerator to the iteratee
+enumerator(iteratee)
+```
+## About the web application
+
+This web application uses all these features from MongoDB and MongoAsync. Obviously, they are adapated to fit the Play concepts - take a look to the code and start your own application!
