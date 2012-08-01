@@ -81,7 +81,21 @@ Sorting is as easy as writing a query. In fact, we may just write the following 
 }
 ```
 
-This will find all the articles published by Stephane and order the results by the creationDate (the older comes first).
+Which gives with MongoAsync:
+
+```scala
+// build a selection document with an empty query and a sort subdocument ('$orderby')
+Bson(
+  "$orderby" -> Bson(
+    "creationDate" -> BSONInteger(1)
+  ).toDocument,
+  "$query" -> Bson(
+    "publisher" -> BSONString("Stephane")
+  ).toDocument
+)
+```
+
+This will find all the articles published by Stephane and order the results by the creationDate (the oldest comes first).
 The original query is encapsulated in a `$query` subdocument, and the sort criteria is in an object named `$orderby`.
 
 ### Update
