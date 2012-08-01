@@ -45,9 +45,9 @@ val collection = db("articles")
 // empty query will match all documents by default
 val query = Bson()
 // run this query over the collection
-val found = collection.find(query)
+val futureCursor = collection.find(query)
 // got the list of documents (in a fully non-blocking way)
-val list = collect[List, Article](found)
+val futureList = collect[List, Article](futureCursor)
 ```
 
 If we want to get only the documents that have a field *publisher* which value is *Stephane*, we may just write the following query:
@@ -56,10 +56,11 @@ If we want to get only the documents that have a field *publisher* which value i
 val query = Bson("publisher" -> BSONString("Stephane"))
 // run this query over the collection
 val articlesPublishedByStephane = collection.find(query)
-val list = collect[List, Article](articlesPublishedByStephane)
+val futureListOfArticlesPublishedByStephane = collect[List, Article](articlesPublishedByStephane)
 ```
 
 In JSON, the query would look like this:
+
 ```json
 {
   "publisher": "Stephane"
@@ -119,6 +120,7 @@ Mongo allows two "standard" update modes:
 Consider the following example (we modify an article that has a certain id):
 
 ```scala
+val id = "50181f15e0f8477d00a5859e"
 val objectId = new BSONObjectID(id)
 // create a modifier document, ie a document that contains the update operations to run onto the documents matching the query
 val modifier = Bson(
@@ -148,5 +150,15 @@ The modifier in pseudo-JSON would be:
 ```
 
 ### Delete
+
+Deletion is done the same way:
+
+```scala
+val id = "50181f15e0f8477d00a5859e"
+collection.remove(Bson("_id" -> new BSONObjectID(id)).onComplete {
+  case Left(e) => throw e
+  case Right(lastError) => println("successful!")
+}
+```
 
 ### GridFS
