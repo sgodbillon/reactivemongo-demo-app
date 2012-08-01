@@ -129,9 +129,9 @@ val modifier = Bson(
   // this modifier will set the fields 'updateDate', 'title', 'content', and 'publisher'
   "$set" -> Bson(
     "updateDate" -> BSONDateTime(new DateTime().getMillis),
-    "title" -> BSONString(article.title),
-    "content" -> BSONString(article.content),
-    "publisher" -> BSONString(article.publisher)).toDocument)
+    "title" -> BSONString("a new title"),
+    "content" -> BSONString("a new text content"),
+    "publisher" -> BSONString("Jack")).toDocument)
 // ok, let's do the update
 collection.update(Bson("_id" -> objectId), modifier).onComplete {
   case Left(e) => throw e
