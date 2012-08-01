@@ -38,7 +38,7 @@ As for data, queries are expressed in JSON style. It is very easy to write and r
 
 But the real power of MongoDB is that it is very scalable. It is very easy to add replicas (for replication, or for balancing eventual consistent read operations), and shards: when you get a high volume of data, you can set up a new server that will store only a part of the data. Mongo handles the query routing so that it is transparent for the developpers.
 
-### Simple query
+### Simple Query
 
 Queries are written in BSON (binary JSON). An empty query matches all the documents that are stored in the collection.
 
@@ -69,7 +69,7 @@ In JSON, the query would look like this:
 }
 ```
 
-### Sort a query
+### Sort a Query
 
 Sorting is as easy as writing a query. In fact, we may just write the following (in JSON):
 
@@ -190,8 +190,8 @@ val enumerator = Enumerator.fromFile("/Users/sgo/archive.zip", 262144)
 // apply this enumerator to the iteratee
 enumerator(iteratee)
 ```
-## About the web application
+## About the Web Application
 
-This web application uses all these features from MongoDB and MongoAsync. Obviously, they are adapated to fit the Play concepts - take a look to the code and start your own application!
+This web application uses all these features from MongoDB and MongoAsync. Obviously, they are adapated to fit the Play concepts - take a look to the code and start your own!
 
 Author: [Stephane Godbillon](https://twitter.com/sgodbillon)
