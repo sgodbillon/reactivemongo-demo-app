@@ -85,7 +85,7 @@ Which gives with MongoAsync:
 
 ```scala
 // build a selection document with an empty query and a sort subdocument ('$orderby')
-Bson(
+val query = Bson(
   "$orderby" -> Bson(
     "creationDate" -> BSONInteger(1)
   ).toDocument,
@@ -93,6 +93,18 @@ Bson(
     "publisher" -> BSONString("Stephane")
   ).toDocument
 )
+```
+
+The query is run this way:
+
+```scala
+val futureCursor = collection.find(query) // a future cursor over the results
+// build (asynchronously) a list containing all the articles
+val futureListOfArticles = collect[List, Article](futureCursor)
+futureListOfArticles.onRedeem { articles =>
+  for(article <- articles)
+    println("found article: " + article)
+}
 ```
 
 This will find all the articles published by Stephane and order the results by the creationDate (the oldest comes first).
