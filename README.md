@@ -100,6 +100,41 @@ The original query is encapsulated in a `$query` subdocument, and the sort crite
 
 ### Update
 
+Mongo allows two "standard" update modes:
+* replacement - the given document may replace the matched documents
+* modification - the given document is a *modifier* object (a document that has special operators in it, like `$set`, `$unset`, `$rename`, etc.)
+                                                  * 
+Consider the following example (we modify an article that has a certain id):
+
+```scala
+val objectId = new BSONObjectID(id)
+// create a modifier document, ie a document that contains the update operations to run onto the documents matching the query
+val modifier = Bson(
+  // this modifier will set the fields 'updateDate', 'title', 'content', and 'publisher'
+  "$set" -> Bson(
+    "updateDate" -> BSONDateTime(new DateTime().getMillis),
+    "title" -> BSONString(article.title),
+    "content" -> BSONString(article.content),
+    "publisher" -> BSONString(article.publisher)).toDocument)
+// ok, let's do the update
+collection.update(Bson("_id" -> objectId), modifier).onComplete {
+  case Left(e) => throw e
+  case Right(lastError) => println("successful!")
+}
+```
+
+The modifier in pseudo-JSON would be:
+```json
+{
+  "$set": {
+    "updateDate": new Date(),
+    "title": "a new title",
+    "content": "a new text content",
+    "publisher": "Jack"
+  }
+}
+```
+
 ### Delete
 
 ### GridFS
