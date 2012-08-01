@@ -26,7 +26,7 @@ The following features of MongoAsync driver are covered:
 
 This application uses some concepts from MongoDB that we will explain in this section.
 
-### A Word About the MongoDB
+### A Word About MongoDB
 
 > MongoDB (from "humongous") is a scalable, high-performance, open source NoSQL database.
 
@@ -193,3 +193,5 @@ enumerator(iteratee)
 ## About the web application
 
 This web application uses all these features from MongoDB and MongoAsync. Obviously, they are adapated to fit the Play concepts - take a look to the code and start your own application!
+
+Author: [Stephane Godbillon](https://twitter.com/sgodbillon)
