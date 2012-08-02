@@ -1,25 +1,22 @@
 package controllers
 
 import models._
-
-import akka.dispatch.Future
 import play.api._
 import play.api.libs.concurrent._
 import play.api.libs.iteratee._
 import play.api.mvc._
 import play.api.Play.current
 import play.modules.mongodb.MongoAsyncPlugin
-
 import org.asyncmongo.api._
 import org.asyncmongo.bson._
 import org.asyncmongo.gridfs._
 import org.asyncmongo.handlers.DefaultBSONHandlers._
-
 import org.joda.time._
-
+import scala.concurrent.{ExecutionContext, Future}
 
 object Articles extends Controller with MongoController {
   implicit val connection = MongoAsyncPlugin.connection
+  implicit val ec: ExecutionContext = ExecutionContext.Implicits.global
 
   val db = MongoAsyncPlugin.db
   val collection = db("articles")
@@ -109,7 +106,6 @@ object Articles extends Controller with MongoController {
   }
 
   def delete(id: String) = Action {
-    implicit val ec = MongoConnection.system
     MongoPromiseResult {
       // let's collect all the attachments matching that match the article to delete
       collect[List, ReadFileEntry](gridFS.find(Bson("article" -> new BSONObjectID(id)))).flatMap { files =>
@@ -121,10 +117,10 @@ object Articles extends Controller with MongoController {
             gridFS.files.remove(Bson("_id" -> file.id))
           }
         }
-        new AkkaPromise(Future.sequence(deletions))
+        Future.sequence(deletions)
       }.flatMap { _ =>
         // now, the last operation: remove the article
-        new AkkaPromise(collection.remove(Bson("_id" -> new BSONObjectID(id))))
+        collection.remove(Bson("_id" -> new BSONObjectID(id)))
       }.map(_ => Ok).recover { case _ => InternalServerError}
     }
   }
@@ -134,7 +130,8 @@ object Articles extends Controller with MongoController {
     // the reader that allows the 'find' method to return a future Cursor[Article]
     implicit val reader = Article.ArticleBSONReader
     // first, get the attachment matching the given id, and get the first result (if any)
-    val uploaded = collect[List, Article](collection.find(Bson("_id" -> new BSONObjectID(id)))).map(_.headOption)
+    val bidule = collection.find(Bson("_id" -> new BSONObjectID(id)))
+    val uploaded = collect[List, Article](bidule).map(_.headOption)
     MongoPromiseResult {
       // we filter the future to get it successful only if there is a matching Article
       uploaded.filter(_.isDefined).flatMap { articleOption =>
@@ -145,7 +142,7 @@ object Articles extends Controller with MongoController {
           // we get the putResult, resulting of the upload of the attachment into the GridFS store
           val fileId = putResult.head.id
           // and now we add the article id to the file entry (in order to find the attachments of an article)
-          new AkkaPromise(gridFS.files.update(Bson("_id" -> fileId), Bson("$set" -> Bson("article" -> article.id.get).toDocument)))
+          gridFS.files.update(Bson("_id" -> fileId), Bson("$set" -> Bson("article" -> article.id.get).toDocument))
         }.map { _ =>
           Redirect(routes.Articles.showEditForm(id))
         }
