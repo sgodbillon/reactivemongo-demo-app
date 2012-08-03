@@ -47,9 +47,9 @@ val collection = db("articles")
 // empty query will match all documents by default
 val query = Bson()
 // run this query over the collection
-val futureCursor = collection.find(query)
+val cursor = collection.find(query)
 // got the list of documents (in a fully non-blocking way)
-val futureList = collect[List, Article](futureCursor)
+val futureList = cursor.toList
 ```
 
 If we want to get only the documents that have a field *publisher* which value is *Stephane*, we may just write the following query:
@@ -58,7 +58,7 @@ If we want to get only the documents that have a field *publisher* which value i
 val query = Bson("publisher" -> BSONString("Stephane"))
 // run this query over the collection
 val articlesPublishedByStephane = collection.find(query)
-val futureListOfArticlesPublishedByStephane = collect[List, Article](articlesPublishedByStephane)
+val futureListOfArticlesPublishedByStephane :Future[List[Article]] = articlesPublishedByStephane.toList
 ```
 
 In JSON, the query would look like this:
@@ -101,9 +101,9 @@ val query = Bson(
 The query is run this way:
 
 ```scala
-val futureCursor = collection.find(query) // a future cursor over the results
+val cursor = collection.find(query) // a cursor over the results
 // build (asynchronously) a list containing all the articles
-val futureListOfArticles = collect[List, Article](futureCursor)
+val futureListOfArticles :Future[List[Article]] = cursor.toList
 futureListOfArticles.onRedeem { articles =>
   for(article <- articles)
     println("found article: " + article)
@@ -170,6 +170,7 @@ GridFS is a specification for storing large files in MongoDB. It allows to store
 GridFS is very simple in its approach: the files are cut into chunks that are written into a fs.chunks collection. Their metadata are saved in a fs.files collection.
 
 ```javascript
+// in the MongoDB console
 > db.fs.files.find().limit(1)
 { "_id" : ObjectId("50181f15e0f8477d00a5859e"), "article" : ObjectId("50181efbe0f8477f00a5859d"), "chunkSize" : 262144, "contentType" : "application/octet-stream", "filename" : "archive.zip", "length" : 36018804, "uploadDate" : ISODate("2012-07-31T18:08:25.175Z") }
 > db.fs.chunks.find({}, {data: 0}).limit(1) // we strip data :)
@@ -188,8 +189,19 @@ val iteratee = gridFS.save(name, None, contentType)
 // an enumerator (producer of chunks), which chunks come from a file on the filesystem
 val enumerator = Enumerator.fromFile("/Users/sgo/archive.zip", 262144)
 // apply this enumerator to the iteratee
-enumerator(iteratee)
+enumerator.apply(iteratee)
 ```
+
+#### Note about GridFS
+
+In order to make GridFS properly, you need to add an index on the chunks collection :
+
+```javascript
+// in the MongoDB console, on the 'attachments' GridFS store
+> db.attachments.chunks.ensureIndex({ files_id : 1 , n : 1 })
+{ "_id" : ObjectId("50181f1806e0582d8ba37dea"), "files_id" : ObjectId("50181f15e0f8477d00a5859e"), "n" : 124}
+```
+
 ## About the Web Application
 
 This web application uses all these features from MongoDB and MongoAsync. Obviously, they are adapated to fit the Play concepts - take a look to the code and start your own!
