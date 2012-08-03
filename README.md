@@ -199,7 +199,7 @@ In order to make GridFS work properly, you need to add an index on the chunks co
 ```javascript
 // in the MongoDB console, on the 'attachments' GridFS store
 > db.attachments.chunks.ensureIndex({ files_id : 1 , n : 1 })
-{ "_id" : ObjectId("50181f1806e0582d8ba37dea"), "files_id" : ObjectId("50181f15e0f8477d00a5859e"), "n" : 124}
+> // done!
 ```
 
 ## About the Web Application
