@@ -1,17 +1,15 @@
 package controllers
 
 import models._
-import play.api._
-import play.api.libs.concurrent._
-import play.api.libs.iteratee._
-import play.api.mvc._
-import play.api.Play.current
-import play.modules.mongodb.MongoAsyncPlugin
 import org.asyncmongo.api._
 import org.asyncmongo.bson._
 import org.asyncmongo.gridfs._
 import org.asyncmongo.handlers.DefaultBSONHandlers._
 import org.joda.time._
+import play.api._
+import play.api.mvc._
+import play.api.Play.current
+import play.modules.mongodb._
 import scala.concurrent.{ExecutionContext, Future}
 
 object Articles extends Controller with MongoController {
@@ -25,7 +23,7 @@ object Articles extends Controller with MongoController {
 
   // list all articles and sort them
   def index = Action { implicit request =>
-    MongoPromiseResult {
+    MongoAsyncResult {
       implicit val reader = Article.ArticleBSONReader
       // empty query to match all the documents
       val query = Bson()
@@ -39,7 +37,7 @@ object Articles extends Controller with MongoController {
       // the future cursor of documents
       val found = collection.find(query)
       // build (asynchronously) a list containing all the articles
-      collect[List, Article](collection.find(query)).map { articles =>
+      found.toList.map { articles =>
         Ok(views.html.articles(articles, activeSort))
       }
     }
@@ -51,23 +49,23 @@ object Articles extends Controller with MongoController {
 
   def showEditForm(id: String) = Action {
     implicit val reader = Article.ArticleBSONReader
-    MongoPromiseResult {
+    MongoAsyncResult {
       val objectId = new BSONObjectID(id)
       // get the documents having this id (there will be 0 or 1 result)
-      val futureCursor = collection.find(Bson("_id" -> objectId))
+      val cursor = collection.find(Bson("_id" -> objectId))
       // ... so we get optionally the matching article, if any
-      val futureMaybeUser = collect[Set, Article](futureCursor).map(_.headOption)
+      val futureMaybeUser = cursor.headOption
       futureMaybeUser.flatMap { maybeArticle =>
         // if there is an article matching the id, get its attachments too
         maybeArticle.map { article =>
           // build (asynchronously) a list containing all the attachments if the article
-          collect[List, ReadFileEntry](gridFS.find(Bson("article" -> article.id.get))).map { files =>
+          gridFS.find(Bson("article" -> article.id.get)).toList.map { files =>
             val filesWithId = files.map { file =>
               file.id.asInstanceOf[BSONObjectID].stringify -> file
             }
             Ok(views.html.editArticle(Some(id), Article.form.fill(article), Some(filesWithId)))
           }
-        }.getOrElse(Promise.pure(NotFound))
+        }.getOrElse(Future(NotFound))
       }
     }
   }
@@ -76,7 +74,7 @@ object Articles extends Controller with MongoController {
     Article.form.bindFromRequest.fold(
       errors => Ok(views.html.editArticle(None, errors, None)),
       // if no error, then insert the article into the 'articles' collection
-      article => MongoFutureResult {
+      article => MongoAsyncResult {
         collection.insert(article.copy(creationDate = Some(new DateTime()), updateDate = Some(new DateTime()))).map( _ =>
           Redirect(routes.Articles.index)
         )
@@ -87,7 +85,7 @@ object Articles extends Controller with MongoController {
   def edit(id: String) = Action { implicit request =>
     Article.form.bindFromRequest.fold(
       errors => Ok(views.html.editArticle(Some(id), errors, None)),
-      article => MongoFutureResult {
+      article => MongoAsyncResult {
         val objectId = new BSONObjectID(id)
         // create a modifier document, ie a document that contains the update operations to run onto the documents matching the query
         val modifier = Bson(
@@ -106,9 +104,9 @@ object Articles extends Controller with MongoController {
   }
 
   def delete(id: String) = Action {
-    MongoPromiseResult {
+    MongoAsyncResult {
       // let's collect all the attachments matching that match the article to delete
-      collect[List, ReadFileEntry](gridFS.find(Bson("article" -> new BSONObjectID(id)))).flatMap { files =>
+      gridFS.find(Bson("article" -> new BSONObjectID(id))).toList.flatMap { files =>
         // for each attachment, delete their chunks and then their file entry
         val deletions = files.map { file =>
           // step 1: remove the chunks of the file
@@ -130,36 +128,38 @@ object Articles extends Controller with MongoController {
     // the reader that allows the 'find' method to return a future Cursor[Article]
     implicit val reader = Article.ArticleBSONReader
     // first, get the attachment matching the given id, and get the first result (if any)
-    val bidule = collection.find(Bson("_id" -> new BSONObjectID(id)))
-    val uploaded = collect[List, Article](bidule).map(_.headOption)
-    MongoPromiseResult {
+    val cursor = collection.find(Bson("_id" -> new BSONObjectID(id)))
+    val uploaded = cursor.headOption
+    MongoAsyncResult {
       // we filter the future to get it successful only if there is a matching Article
       uploaded.filter(_.isDefined).flatMap { articleOption =>
         // ... so we're sure that we eventually get an article here
         val article = articleOption.get
         // wait (non-blocking) for the upload to finish. (This example does not handle multiple file uploads)
-        Promise.sequence(request.body).flatMap { putResult =>
-          // we get the putResult, resulting of the upload of the attachment into the GridFS store
-          val fileId = putResult.head.id
-          // and now we add the article id to the file entry (in order to find the attachments of an article)
-          gridFS.files.update(Bson("_id" -> fileId), Bson("$set" -> Bson("article" -> article.id.get).toDocument))
-        }.map { _ =>
-          Redirect(routes.Articles.showEditForm(id))
+        val sequenceOfFutures = request.body.files.map(_.ref)
+
+        Future.sequence(sequenceOfFutures).flatMap { putResults =>
+          // we get the putResults, resulting of the upload of the attachment into the GridFS store
+          putResults.headOption.map { result =>
+            // and now we add the article id to the file entry (in order to find the attachments of an article)
+            gridFS.files.update(Bson("_id" -> result.id), Bson("$set" -> Bson("article" -> article.id.get).toDocument)).map {
+              case _ => Redirect(routes.Articles.showEditForm(id))
+            }
+          }.getOrElse(Future(BadRequest))
         }
       }
     }
   }
 
   def getAttachment(id: String) = Action {
-    MongoPromiseResult {
+    MongoAsyncResult {
       // find the matching attachment, if any, and streams it to the client
       serve(gridFS.find(Bson("_id" -> new BSONObjectID(id))))
     }
   }
 
-
   def removeAttachment(id: String) = Action {
-    MongoFutureResult {
+    MongoAsyncResult {
       // first, remove the file entry matching this id
       gridFS.files.remove(Bson("_id" -> new BSONObjectID(id))).flatMap { _ =>
         // then remove the chunks of this file
