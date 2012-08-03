@@ -194,7 +194,7 @@ enumerator.apply(iteratee)
 
 #### Note about GridFS
 
-In order to make GridFS properly, you need to add an index on the chunks collection :
+In order to make GridFS work properly, you need to add an index on the chunks collection :
 
 ```javascript
 // in the MongoDB console, on the 'attachments' GridFS store
