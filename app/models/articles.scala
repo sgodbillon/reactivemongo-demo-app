@@ -25,37 +25,19 @@ case class Article(
 object Article {
   implicit object ArticleBSONReader extends BSONReader[Article] {
     def read(buf: ChannelBuffer) :Article = {
-      val mapped = DefaultBSONHandlers.DefaultBSONReader.read(buf).mapped
+      val doc = DefaultBSONHandlers.DefaultBSONDocumentReader.read(buf)
       Article(
-        mapped.get("_id").flatMap(_.value match {
-          case id: BSONObjectID => Some(id)
-          case _ => None
-        }),
-        mapped.get("title").flatMap(_.value match {
-          case BSONString(title) => Some(title)
-          case _ => None
-        }).get,
-        mapped.get("content").flatMap(_.value match {
-          case BSONString(content) => Some(content)
-          case _ => None
-        }).get,
-        mapped.get("publisher").flatMap(_.value match {
-          case BSONString(publisher) => Some(publisher)
-          case _ => None
-        }).get,
-        mapped.get("creationDate").flatMap(_.value match {
-          case BSONDateTime(time) => Some(new DateTime(time))
-          case _ => None
-        }),
-        mapped.get("updateDate").flatMap(_.value match {
-          case BSONDateTime(time) => Some(new DateTime(time))
-          case _ => None
-        }))
+        doc.getAs[BSONObjectID]("_id"),
+        doc.getAs[BSONString]("title").get.value,
+        doc.getAs[BSONString]("content").get.value,
+        doc.getAs[BSONString]("publisher").get.value,
+        doc.getAs[BSONDateTime]("creationDate").map(dt => new DateTime(dt.value)),
+        doc.getAs[BSONDateTime]("updateDate").map(dt => new DateTime(dt.value)))
     }
   }
   implicit object ArticleBSONWriter extends BSONWriter[Article] {
     def write(article: Article) = {
-      val bson = Bson(
+      val bson = BSONDocument(
         "_id" -> article.id.getOrElse(BSONObjectID.generate),
         "title" -> BSONString(article.title),
         "content" -> BSONString(article.content),
