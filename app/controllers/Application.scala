@@ -11,6 +11,8 @@ import play.api.mvc._
 import play.api.Play.current
 import play.modules.mongodb._
 import scala.concurrent.{ExecutionContext, Future}
+import scala.concurrent.util.Duration
+import scala.concurrent.util.duration._
 
 object Articles extends Controller with MongoController {
   implicit val connection = MongoAsyncPlugin.connection
@@ -20,6 +22,11 @@ object Articles extends Controller with MongoController {
   val collection = db("articles")
   // a GridFS store named 'attachments'
   val gridFS = new GridFS(db, "attachments")
+
+  // let's build an index on our gridfs chunks collection if none
+  connection.waitForPrimary(1 seconds).map { _ =>
+    gridFS.ensureIndex
+  }
 
   // list all articles and sort them
   def index = Action { implicit request =>
