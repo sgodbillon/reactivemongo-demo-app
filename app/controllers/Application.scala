@@ -2,9 +2,9 @@ package controllers
 
 import models._
 import org.asyncmongo.api._
+import org.asyncmongo.api.gridfs._
 import org.asyncmongo.bson._
-import org.asyncmongo.gridfs._
-import org.asyncmongo.handlers.DefaultBSONHandlers._
+import org.asyncmongo.bson.handlers.DefaultBSONHandlers._
 import org.joda.time._
 import play.api._
 import play.api.mvc._

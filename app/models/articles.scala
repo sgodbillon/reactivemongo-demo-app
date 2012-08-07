@@ -1,7 +1,7 @@
 package models
 
 import org.asyncmongo.bson._
-import org.asyncmongo.handlers._
+import org.asyncmongo.bson.handlers._
 
 import org.jboss.netty.buffer._
 
