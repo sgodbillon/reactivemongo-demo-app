@@ -1,4 +1,4 @@
-MongoDB with MongoAsync: a sample webapp
+MongoDB with ReactiveMongo: a sample webapp
 
   This application manages articles. An article has a title, a text content and a publisher. The articles can be updated and sorted by title, publisher, creation/update date, etc. One or more attachments can be uploaded and bound to an article (like an image, a pdf, an archive...). All the classic CRUD operations are implemented.
   

@@ -1,16 +1,14 @@
 package models
 
-import org.asyncmongo.bson._
-import org.asyncmongo.bson.handlers._
-
 import org.jboss.netty.buffer._
-
 import org.joda.time.DateTime
-
 import play.api.data._
 import play.api.data.Forms._
 import play.api.data.format.Formats._
 import play.api.data.validation.Constraints._
+
+import reactivemongo.bson._
+import reactivemongo.bson.handlers._
 
 case class Article(
   id: Option[BSONObjectID],

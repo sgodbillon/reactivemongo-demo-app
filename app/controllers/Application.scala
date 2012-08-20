@@ -1,10 +1,6 @@
 package controllers
 
 import models._
-import org.asyncmongo.api._
-import org.asyncmongo.api.gridfs._
-import org.asyncmongo.bson._
-import org.asyncmongo.bson.handlers.DefaultBSONHandlers._
 import org.joda.time._
 import play.api._
 import play.api.mvc._
@@ -13,6 +9,11 @@ import play.modules.mongodb._
 import scala.concurrent.{ExecutionContext, Future}
 import scala.concurrent.util.Duration
 import scala.concurrent.util.duration._
+
+import reactivemongo.api._
+import reactivemongo.api.gridfs._
+import reactivemongo.bson._
+import reactivemongo.bson.handlers.DefaultBSONHandlers._
 
 object Articles extends Controller with MongoController {
   implicit val connection = MongoAsyncPlugin.connection
@@ -61,11 +62,14 @@ object Articles extends Controller with MongoController {
       // get the documents having this id (there will be 0 or 1 result)
       val cursor = collection.find(BSONDocument("_id" -> objectId))
       // ... so we get optionally the matching article, if any
-      val futureMaybeUser = cursor.headOption
-      futureMaybeUser.flatMap { maybeArticle =>
-        // if there is an article matching the id, get its attachments too
-        maybeArticle.map { article =>
-          // build (asynchronously) a list containing all the attachments if the article
+      // let's use for-comprehensions to compose futures (see http://doc.akka.io/docs/akka/2.0.3/scala/futures.html#For_Comprehensions for more information)
+      for {
+        // get a future option of article
+        maybeArticle <- cursor.headOption
+        // if there is some article, return a future of result with the article and its attachments
+        result <- maybeArticle.map { article =>
+          // search for the matching attachments
+          // find(...).toList returns a future list of documents (here, a future list of ReadFileEntry)
           gridFS.find(BSONDocument("article" -> article.id.get)).toList.map { files =>
             val filesWithId = files.map { file =>
               file.id.asInstanceOf[BSONObjectID].stringify -> file
@@ -73,7 +77,7 @@ object Articles extends Controller with MongoController {
             Ok(views.html.editArticle(Some(id), Article.form.fill(article), Some(filesWithId)))
           }
         }.getOrElse(Future(NotFound))
-      }
+      } yield result
     }
   }
 

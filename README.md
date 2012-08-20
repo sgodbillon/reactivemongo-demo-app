@@ -1,12 +1,12 @@
-# MongoDB with MongoAsync : a Sample App
+# MongoDB with ReactiveMongo : a Sample App
 
 This is a sample app to show in a few lines of code how MongoDB can be used to build a simple (yet full featured) web application.
 
 This example use the following:
 * MongoDB (*yeah, no kidding*)
-* MongoAsync, a non-blocking and asynchronous Scala driver for MongoDB
+* ReactiveMongo, a non-blocking and asynchronous Scala driver for MongoDB
 * Play 2.1 as a web framework
-* Play MongoAsync module
+* Play ReactiveMongo module
 
 This application manages articles. An article has a title, a text content and a publisher. The articles can be updated and sorted by title, publisher, creation/update date, etc. One or more attachments can be uploaded and bound to an article (like an image, a pdf, an archive...). All the classic CRUD operations are implemented.
 
@@ -17,13 +17,12 @@ To sum up, this sample covers the following features of MongoDB:
 * Delete
 * GridFS a storage engine for the attachments
 
-The following features of MongoAsync driver are covered:
+The following features of ReactiveMongo driver are covered:
 * (Non-blocking) queries, updates, deletes
 * (Non-blocking) GridFS storage
 * Streaming files from and into GridFS
 
-## A Glimpse at MongoDB Features with MongoAsync
-
+## A Glimpse at MongoDB Features with ReactiveMongo
 This application uses some concepts from MongoDB that we will explain in this section.
 
 ### A Word About MongoDB
@@ -84,7 +83,7 @@ Sorting is as easy as writing a query. In fact, we may just write the following 
 }
 ```
 
-Which gives with MongoAsync:
+Which gives with ReactiveMongo:
 
 ```scala
 // build a selection document with an empty query and a sort subdocument ('$orderby')
@@ -177,7 +176,7 @@ GridFS is very simple in its approach: the files are cut into chunks that are wr
 { "_id" : ObjectId("50181f1806e0582d8ba37dea"), "files_id" : ObjectId("50181f15e0f8477d00a5859e"), "n" : 124}
 ```
 
-MongoAsync allows to stream those files from and into GridFS, in a non-blocking way. Let's take a look to an example:
+ReactiveMongo allows to stream those files from and into GridFS, in a non-blocking way. Let's take a look to an example:
 
 ```scala
 val name = "archive.zip"
@@ -192,18 +191,8 @@ val enumerator = Enumerator.fromFile("/Users/sgo/archive.zip", 262144)
 enumerator.apply(iteratee)
 ```
 
-#### Note about GridFS
-
-In order to make GridFS work properly, you need to add an index on the chunks collection :
-
-```javascript
-// in the MongoDB console, on the 'attachments' GridFS store
-> db.attachments.chunks.ensureIndex({ files_id : 1 , n : 1 })
-> // done!
-```
-
 ## About the Web Application
 
-This web application uses all these features from MongoDB and MongoAsync. Obviously, they are adapated to fit the Play concepts - take a look to the code and start your own!
+This web application uses all these features from MongoDB and ReactiveMongo. Obviously, they are adapated to fit the Play concepts - take a look to the code and start your own!
 
-Author: [Stephane Godbillon](https://twitter.com/sgodbillon)
+Author: [Stephane Godbillon](http://stephane.godbillon.com) - [Twitter](https://twitter.com/sgodbillon)
