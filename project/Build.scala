@@ -8,8 +8,8 @@ object ApplicationBuild extends Build {
     val appVersion      = "1.0-SNAPSHOT"
 
     val appDependencies = Seq(
-	"org.asyncmongo" %% "mongo-async-driver" % "0.1-SNAPSHOT",
-	"play.modules.mongodb" %% "play2-mongodb-async" % "0.1-SNAPSHOT"
+        "reactivemongo" %% "reactivemongo" % "0.1-SNAPSHOT",
+        "play.modules.reactivemongo" %% "play2-reactivemongo" % "0.1-SNAPSHOT"
     )
 
     val main = PlayProject(appName, appVersion, appDependencies, mainLang = SCALA).settings(

@@ -5,7 +5,7 @@ import org.joda.time._
 import play.api._
 import play.api.mvc._
 import play.api.Play.current
-import play.modules.mongodb._
+import play.modules.reactivemongo._
 import scala.concurrent.{ExecutionContext, Future}
 import scala.concurrent.util.Duration
 import scala.concurrent.util.duration._
@@ -16,10 +16,10 @@ import reactivemongo.bson._
 import reactivemongo.bson.handlers.DefaultBSONHandlers._
 
 object Articles extends Controller with MongoController {
-  implicit val connection = MongoAsyncPlugin.connection
+  implicit val connection = ReactiveMongoPlugin.connection
   implicit val ec: ExecutionContext = ExecutionContext.Implicits.global
 
-  val db = MongoAsyncPlugin.db
+  val db = ReactiveMongoPlugin.db
   val collection = db("articles")
   // a GridFS store named 'attachments'
   val gridFS = new GridFS(db, "attachments")
