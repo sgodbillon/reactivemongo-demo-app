@@ -18,8 +18,8 @@ case class Article(
   creationDate: Option[DateTime],
   updateDate: Option[DateTime]
 )
-// turn off your mind, relax, and flow downstream
-// it is not dying...
+// Turn off your mind, relax, and float downstream
+// It is not dying...
 object Article {
   implicit object ArticleBSONReader extends BSONReader[Article] {
     def read(buf: ChannelBuffer) :Article = {
