@@ -16,9 +16,6 @@ import reactivemongo.bson._
 import reactivemongo.bson.handlers.DefaultBSONHandlers._
 
 object Articles extends Controller with MongoController {
-  implicit val connection = ReactiveMongoPlugin.connection
-  implicit val ec: ExecutionContext = ExecutionContext.Implicits.global
-
   val db = ReactiveMongoPlugin.db
   val collection = db("articles")
   // a GridFS store named 'attachments'
@@ -31,7 +28,7 @@ object Articles extends Controller with MongoController {
 
   // list all articles and sort them
   def index = Action { implicit request =>
-    MongoAsyncResult {
+    AsyncResult {
       implicit val reader = Article.ArticleBSONReader
       // empty query to match all the documents
       val query = BSONDocument()
@@ -57,7 +54,7 @@ object Articles extends Controller with MongoController {
 
   def showEditForm(id: String) = Action {
     implicit val reader = Article.ArticleBSONReader
-    MongoAsyncResult {
+    AsyncResult {
       val objectId = new BSONObjectID(id)
       // get the documents having this id (there will be 0 or 1 result)
       val cursor = collection.find(BSONDocument("_id" -> objectId))
@@ -85,7 +82,7 @@ object Articles extends Controller with MongoController {
     Article.form.bindFromRequest.fold(
       errors => Ok(views.html.editArticle(None, errors, None)),
       // if no error, then insert the article into the 'articles' collection
-      article => MongoAsyncResult {
+      article => AsyncResult {
         collection.insert(article.copy(creationDate = Some(new DateTime()), updateDate = Some(new DateTime()))).map( _ =>
           Redirect(routes.Articles.index)
         )
@@ -96,7 +93,7 @@ object Articles extends Controller with MongoController {
   def edit(id: String) = Action { implicit request =>
     Article.form.bindFromRequest.fold(
       errors => Ok(views.html.editArticle(Some(id), errors, None)),
-      article => MongoAsyncResult {
+      article => AsyncResult {
         val objectId = new BSONObjectID(id)
         // create a modifier document, ie a document that contains the update operations to run onto the documents matching the query
         val modifier = BSONDocument(
@@ -115,16 +112,12 @@ object Articles extends Controller with MongoController {
   }
 
   def delete(id: String) = Action {
-    MongoAsyncResult {
+    AsyncResult {
       // let's collect all the attachments matching that match the article to delete
       gridFS.find(BSONDocument("article" -> new BSONObjectID(id))).toList.flatMap { files =>
         // for each attachment, delete their chunks and then their file entry
         val deletions = files.map { file =>
-          // step 1: remove the chunks of the file
-          gridFS.chunks.remove(BSONDocument("files_id" -> file.id)).flatMap { _ =>
-            // step 2: remove the file entry
-            gridFS.files.remove(BSONDocument("_id" -> file.id))
-          }
+          gridFS.remove(file)
         }
         Future.sequence(deletions)
       }.flatMap { _ =>
@@ -141,43 +134,35 @@ object Articles extends Controller with MongoController {
     // first, get the attachment matching the given id, and get the first result (if any)
     val cursor = collection.find(BSONDocument("_id" -> new BSONObjectID(id)))
     val uploaded = cursor.headOption
-    MongoAsyncResult {
-      // we filter the future to get it successful only if there is a matching Article
-      uploaded.filter(_.isDefined).flatMap { articleOption =>
-        // ... so we're sure that we eventually get an article here
-        val article = articleOption.get
-        // wait (non-blocking) for the upload to finish. (This example does not handle multiple file uploads)
-        val sequenceOfFutures = request.body.files.map(_.ref)
 
-        Future.sequence(sequenceOfFutures).flatMap { putResults =>
-          // we get the putResults, resulting of the upload of the attachment into the GridFS store
-          putResults.headOption.map { result =>
-            // and now we add the article id to the file entry (in order to find the attachments of an article)
-            gridFS.files.update(BSONDocument("_id" -> result.id), BSONDocument("$set" -> BSONDocument("article" -> article.id.get))).map {
-              case _ => Redirect(routes.Articles.showEditForm(id))
-            }
-          }.getOrElse(Future(BadRequest))
-        }
+    val futureUpload = for {
+      // we filter the future to get it successful only if there is a matching Article
+      article <- uploaded.filter(_.isDefined).map(_.get)
+      // we wait (non-blocking) for the upload to complete. (This example does not handle multiple files uploads).
+      putResult <- request.body.files.head.ref
+      // when the upload is complete, we add the article id to the file entry (in order to find the attachments of the article)
+      result <- gridFS.files.update(BSONDocument("_id" -> putResult.id), BSONDocument("$set" -> BSONDocument("article" -> article.id.get)))
+    } yield result
+
+    AsyncResult {
+      futureUpload.map {
+        case _ => Redirect(routes.Articles.showEditForm(id))
+      }.recover {
+        case _ => BadRequest
       }
     }
   }
 
   def getAttachment(id: String) = Action {
-    MongoAsyncResult {
+    AsyncResult {
       // find the matching attachment, if any, and streams it to the client
       serve(gridFS.find(BSONDocument("_id" -> new BSONObjectID(id))))
     }
   }
 
   def removeAttachment(id: String) = Action {
-    MongoAsyncResult {
-      // first, remove the file entry matching this id
-      gridFS.files.remove(BSONDocument("_id" -> new BSONObjectID(id))).flatMap { _ =>
-        // then remove the chunks of this file
-        gridFS.chunks.remove(BSONDocument("files_id" -> new BSONObjectID(id))).map { _ =>
-          Ok
-        }
-      }.recover { case _ => InternalServerError }
+    AsyncResult {
+      gridFS.remove(new BSONObjectID(id)).map(_ => Ok).recover { case _ => InternalServerError }
     }
   }
 
