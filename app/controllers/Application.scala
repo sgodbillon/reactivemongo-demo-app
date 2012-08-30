@@ -22,13 +22,11 @@ object Articles extends Controller with MongoController {
   val gridFS = new GridFS(db, "attachments")
 
   // let's build an index on our gridfs chunks collection if none
-  connection.waitForPrimary(1 seconds).map { _ =>
-    gridFS.ensureIndex
-  }
+  gridFS.ensureIndex()
 
   // list all articles and sort them
   def index = Action { implicit request =>
-    AsyncResult {
+    Async {
       implicit val reader = Article.ArticleBSONReader
       // empty query to match all the documents
       val query = BSONDocument()
@@ -54,7 +52,7 @@ object Articles extends Controller with MongoController {
 
   def showEditForm(id: String) = Action {
     implicit val reader = Article.ArticleBSONReader
-    AsyncResult {
+    Async {
       val objectId = new BSONObjectID(id)
       // get the documents having this id (there will be 0 or 1 result)
       val cursor = collection.find(BSONDocument("_id" -> objectId))
@@ -112,7 +110,7 @@ object Articles extends Controller with MongoController {
   }
 
   def delete(id: String) = Action {
-    AsyncResult {
+    Async {
       // let's collect all the attachments matching that match the article to delete
       gridFS.find(BSONDocument("article" -> new BSONObjectID(id))).toList.flatMap { files =>
         // for each attachment, delete their chunks and then their file entry
@@ -144,7 +142,7 @@ object Articles extends Controller with MongoController {
       result <- gridFS.files.update(BSONDocument("_id" -> putResult.id), BSONDocument("$set" -> BSONDocument("article" -> article.id.get)))
     } yield result
 
-    AsyncResult {
+    Async {
       futureUpload.map {
         case _ => Redirect(routes.Articles.showEditForm(id))
       }.recover {
@@ -154,14 +152,14 @@ object Articles extends Controller with MongoController {
   }
 
   def getAttachment(id: String) = Action {
-    AsyncResult {
+    Async {
       // find the matching attachment, if any, and streams it to the client
       serve(gridFS.find(BSONDocument("_id" -> new BSONObjectID(id))))
     }
   }
 
   def removeAttachment(id: String) = Action {
-    AsyncResult {
+    Async {
       gridFS.remove(new BSONObjectID(id)).map(_ => Ok).recover { case _ => InternalServerError }
     }
   }
