@@ -117,7 +117,8 @@ The original query is encapsulated in a `$query` subdocument, and the sort crite
 Mongo allows two "standard" update modes:
 * replacement - the given document may replace the matched documents
 * modification - the given document is a *modifier* object (a document that has special operators in it, like `$set`, `$unset`, `$rename`, etc.)
-* Consider the following example (we modify an article that has a certain id):
+
+Consider the following example (we modify an article that has a certain id):
 
 ```scala
 val id = "50181f15e0f8477d00a5859e"
