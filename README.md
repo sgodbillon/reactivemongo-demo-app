@@ -44,7 +44,7 @@ Queries are written in BSON (binary JSON). An empty query matches all the docume
 ```scala
 val collection = db("articles")
 // empty query will match all documents by default
-val query = Bson()
+val query = BSONDocument()
 // run this query over the collection
 val cursor = collection.find(query)
 // got the list of documents (in a fully non-blocking way)
@@ -54,7 +54,7 @@ val futureList = cursor.toList
 If we want to get only the documents that have a field *publisher* which value is *Stephane*, we may just write the following query:
 
 ```scala
-val query = Bson("publisher" -> BSONString("Stephane"))
+val query = BSONDocument("publisher" -> BSONString("Stephane"))
 // run this query over the collection
 val articlesPublishedByStephane = collection.find(query)
 val futureListOfArticlesPublishedByStephane :Future[List[Article]] = articlesPublishedByStephane.toList
@@ -87,13 +87,13 @@ Which gives with ReactiveMongo:
 
 ```scala
 // build a selection document with an empty query and a sort subdocument ('$orderby')
-val query = Bson(
-  "$orderby" -> Bson(
+val query = BSONDocument(
+  "$orderby" -> BSONDocument(
     "creationDate" -> BSONInteger(1)
-  ).toDocument,
-  "$query" -> Bson(
+  ),
+  "$query" -> BSONDocument(
     "publisher" -> BSONString("Stephane")
-  ).toDocument
+  )
 )
 ```
 
@@ -103,7 +103,7 @@ The query is run this way:
 val cursor = collection.find(query) // a cursor over the results
 // build (asynchronously) a list containing all the articles
 val futureListOfArticles :Future[List[Article]] = cursor.toList
-futureListOfArticles.onRedeem { articles =>
+futureListOfArticles.onSuccess { articles =>
   for(article <- articles)
     println("found article: " + article)
 }
@@ -124,15 +124,16 @@ Consider the following example (we modify an article that has a certain id):
 val id = "50181f15e0f8477d00a5859e"
 val objectId = new BSONObjectID(id)
 // create a modifier document, ie a document that contains the update operations to run onto the documents matching the query
-val modifier = Bson(
+val modifier = BSONDocument(
   // this modifier will set the fields 'updateDate', 'title', 'content', and 'publisher'
-  "$set" -> Bson(
+  "$set" -> BSONDocument(
     "updateDate" -> BSONDateTime(new DateTime().getMillis),
     "title" -> BSONString("a new title"),
     "content" -> BSONString("a new text content"),
-    "publisher" -> BSONString("Jack")).toDocument)
+    "publisher" -> BSONString("Jack"))
+)
 // ok, let's do the update
-collection.update(Bson("_id" -> objectId), modifier).onComplete {
+collection.update(BSONDocument("_id" -> objectId), modifier).onComplete {
   case Left(e) => throw e
   case Right(lastError) => println("successful!")
 }
@@ -156,7 +157,7 @@ Deletion is done the same way:
 
 ```scala
 val id = "50181f15e0f8477d00a5859e"
-collection.remove(Bson("_id" -> new BSONObjectID(id)).onComplete {
+collection.remove(BSONDocument("_id" -> new BSONObjectID(id)).onComplete {
   case Left(e) => throw e
   case Right(lastError) => println("successful!")
 }
