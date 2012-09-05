@@ -22,8 +22,8 @@ case class Article(
 // It is not dying...
 object Article {
   implicit object ArticleBSONReader extends BSONReader[Article] {
-    def read(buf: ChannelBuffer) :Article = {
-      val doc = DefaultBSONHandlers.DefaultBSONDocumentReader.read(buf)
+    def fromBSON(document: BSONDocument) :Article = {
+      val doc = document.toTraversable
       Article(
         doc.getAs[BSONObjectID]("_id"),
         doc.getAs[BSONString]("title").get.value,
@@ -34,7 +34,7 @@ object Article {
     }
   }
   implicit object ArticleBSONWriter extends BSONWriter[Article] {
-    def write(article: Article) = {
+    def toBSON(article: Article) = {
       val bson = BSONDocument(
         "_id" -> article.id.getOrElse(BSONObjectID.generate),
         "title" -> BSONString(article.title),
@@ -44,7 +44,7 @@ object Article {
         bson += "creationDate" -> BSONDateTime(article.creationDate.get.getMillis)
       if(article.updateDate.isDefined)
         bson += "updateDate" -> BSONDateTime(article.updateDate.get.getMillis)
-      bson.makeBuffer
+      bson
     }
   }
   val form = Form(
