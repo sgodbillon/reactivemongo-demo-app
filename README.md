@@ -2,6 +2,8 @@
 
 This is a sample app to show in a few lines of code how MongoDB can be used to build a simple (yet full featured) web application.
 
+> Please note that for running this example this is better to use [this snapshot of Play2](https://bitbucket.org/sgodbillon/repository/src/9f0c4e40cca1/play-2.1-SNAPSHOT.zip) since it is currently being ported to Scala 2.10.
+
 This example use the following:
 * MongoDB (*yeah, no kidding*)
 * ReactiveMongo, a non-blocking and asynchronous Scala driver for MongoDB
