@@ -7,13 +7,12 @@ import play.api.mvc._
 import play.api.Play.current
 import play.modules.reactivemongo._
 import scala.concurrent.{ExecutionContext, Future}
-import scala.concurrent.util.Duration
-import scala.concurrent.util.duration._
 
 import reactivemongo.api._
 import reactivemongo.api.gridfs._
 import reactivemongo.bson._
-import reactivemongo.bson.handlers.DefaultBSONHandlers._
+import reactivemongo.bson.handlers.DefaultBSONHandlers.DefaultBSONDocumentWriter
+import reactivemongo.bson.handlers.DefaultBSONHandlers.DefaultBSONReaderHandler
 
 object Articles extends Controller with MongoController {
   val db = ReactiveMongoPlugin.db
