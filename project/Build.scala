@@ -12,7 +12,7 @@ object ApplicationBuild extends Build {
         "play.modules.reactivemongo" %% "play2-reactivemongo" % "0.1-SNAPSHOT"
     )
 
-    val main = PlayProject(appName, appVersion, appDependencies, mainLang = SCALA).settings(
+    val main = play.Project(appName, appVersion, appDependencies).settings(
 	resolvers += "sgodbillon" at "https://bitbucket.org/sgodbillon/repository/raw/master/snapshots/"
     )
 
