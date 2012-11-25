@@ -35,16 +35,13 @@ object Article {
   }
   implicit object ArticleBSONWriter extends BSONWriter[Article] {
     def toBSON(article: Article) = {
-      val bson = BSONDocument(
+      BSONDocument(
         "_id" -> article.id.getOrElse(BSONObjectID.generate),
         "title" -> BSONString(article.title),
         "content" -> BSONString(article.content),
-        "publisher" -> BSONString(article.publisher))
-      if(article.creationDate.isDefined)
-        bson += "creationDate" -> BSONDateTime(article.creationDate.get.getMillis)
-      if(article.updateDate.isDefined)
-        bson += "updateDate" -> BSONDateTime(article.updateDate.get.getMillis)
-      bson
+        "publisher" -> BSONString(article.publisher),
+        "creationDate" -> article.creationDate.map(date => BSONDateTime(date.getMillis)),
+        "updateDate" -> article.updateDate.map(date => BSONDateTime(date.getMillis)))
     }
   }
   val form = Form(

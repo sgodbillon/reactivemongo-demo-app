@@ -27,14 +27,12 @@ object Articles extends Controller with MongoController {
   def index = Action { implicit request =>
     Async {
       implicit val reader = Article.ArticleBSONReader
-      // empty query to match all the documents
-      val query = BSONDocument()
       val sort = getSort(request)
-      if(sort.isDefined) {
-        // build a selection document with an empty query and a sort subdocument ('$orderby')
-        query += "$orderby" -> sort.get
-        query += "$query" -> BSONDocument()
-      }
+      // build a selection document with an empty query and a sort subdocument ('$orderby')
+      val query = BSONDocument(
+        "$orderby" -> sort,
+        "$query" -> BSONDocument()
+      )
       val activeSort = request.queryString.get("sort").flatMap(_.headOption).getOrElse("none")
       // the future cursor of documents
       val found = collection.find(query)
@@ -165,16 +163,15 @@ object Articles extends Controller with MongoController {
 
   private def getSort(request: Request[_]) = {
     request.queryString.get("sort").map { fields =>
-      val orderBy = BSONDocument()
-      for(field <- fields) {
-        val order = if(field.startsWith("-"))
-          field.drop(1) -> -1
-        else field -> 1
-
-        if(order._1 == "title" || order._1 == "publisher" || order._1 == "creationDate" || order._1 == "updateDate")
-          orderBy += order._1 -> BSONInteger(order._2)
-      }
-      orderBy
+      val sortBy = for {
+        order <- fields.map { field =>
+          if(field.startsWith("-"))
+            field.drop(1) -> -1
+          else field -> 1
+        }
+        if order._1 == "title" || order._1 == "publisher" || order._1 == "creationDate" || order._1 == "updateDate"
+      } yield order._1 -> BSONInteger(order._2)
+      BSONDocument(sortBy :_*)
     }
   }
 }
