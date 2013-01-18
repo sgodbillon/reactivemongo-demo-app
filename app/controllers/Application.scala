@@ -3,16 +3,17 @@ package controllers
 import models._
 import org.joda.time._
 import play.api._
+import play.api.libs.iteratee._
 import play.api.mvc._
 import play.api.Play.current
 import play.modules.reactivemongo._
 import scala.concurrent.{ExecutionContext, Future}
-
 import reactivemongo.api._
 import reactivemongo.api.gridfs._
 import reactivemongo.bson._
 import reactivemongo.bson.handlers.DefaultBSONHandlers.DefaultBSONDocumentWriter
 import reactivemongo.bson.handlers.DefaultBSONHandlers.DefaultBSONReaderHandler
+import java.io.ByteArrayOutputStream
 
 object Articles extends Controller with MongoController {
   val db = ReactiveMongoPlugin.db
@@ -21,7 +22,10 @@ object Articles extends Controller with MongoController {
   val gridFS = new GridFS(db, "attachments")
 
   // let's build an index on our gridfs chunks collection if none
-  gridFS.ensureIndex()
+  gridFS.ensureIndex().onComplete {
+    case index =>
+      Logger.info(s"Checked index, result is $index")
+  }
 
   // list all articles and sort them
   def index = Action { implicit request =>
@@ -49,6 +53,7 @@ object Articles extends Controller with MongoController {
 
   def showEditForm(id: String) = Action {
     implicit val reader = Article.ArticleBSONReader
+
     Async {
       val objectId = new BSONObjectID(id)
       // get the documents having this id (there will be 0 or 1 result)
@@ -60,6 +65,7 @@ object Articles extends Controller with MongoController {
         maybeArticle <- cursor.headOption
         // if there is some article, return a future of result with the article and its attachments
         result <- maybeArticle.map { article =>
+          import reactivemongo.api.gridfs.Implicits.DefaultReadFileReader
           // search for the matching attachments
           // find(...).toList returns a future list of documents (here, a future list of ReadFileEntry)
           gridFS.find(BSONDocument("article" -> article.id.get)).toList.map { files =>
@@ -108,6 +114,7 @@ object Articles extends Controller with MongoController {
 
   def delete(id: String) = Action {
     Async {
+      import reactivemongo.api.gridfs.Implicits.DefaultReadFileReader
       // let's collect all the attachments matching that match the article to delete
       gridFS.find(BSONDocument("article" -> new BSONObjectID(id))).toList.flatMap { files =>
         // for each attachment, delete their chunks and then their file entry
@@ -133,7 +140,7 @@ object Articles extends Controller with MongoController {
     val futureUpload = for {
       // we filter the future to get it successful only if there is a matching Article
       article <- uploaded.filter(_.isDefined).map(_.get)
-      // we wait (non-blocking) for the upload to complete. (This example does not handle multiple files uploads).
+      // we wait (non-blocking) for the upload to complete.
       putResult <- request.body.files.head.ref
       // when the upload is complete, we add the article id to the file entry (in order to find the attachments of the article)
       result <- gridFS.files.update(BSONDocument("_id" -> putResult.id), BSONDocument("$set" -> BSONDocument("article" -> article.id.get)))
@@ -150,8 +157,10 @@ object Articles extends Controller with MongoController {
 
   def getAttachment(id: String) = Action {
     Async {
+      import reactivemongo.api.gridfs.Implicits.DefaultReadFileReader
       // find the matching attachment, if any, and streams it to the client
-      serve(gridFS.find(BSONDocument("_id" -> new BSONObjectID(id))))
+      val file = gridFS.find(BSONDocument("_id" -> new BSONObjectID(id)))
+      serve(gridFS, file)
     }
   }
 
