@@ -11,8 +11,8 @@ import scala.concurrent.{ExecutionContext, Future}
 import reactivemongo.api._
 import reactivemongo.api.gridfs._
 import reactivemongo.bson._
+import reactivemongo.bson.DefaultBSONHandlers._
 import reactivemongo.bson.handlers.DefaultBSONHandlers.DefaultBSONDocumentWriter
-import reactivemongo.bson.handlers.DefaultBSONHandlers.DefaultBSONReaderHandler
 import java.io.ByteArrayOutputStream
 
 object Articles extends Controller with MongoController {
@@ -180,7 +180,7 @@ object Articles extends Controller with MongoController {
         }
         if order._1 == "title" || order._1 == "publisher" || order._1 == "creationDate" || order._1 == "updateDate"
       } yield order._1 -> BSONInteger(order._2)
-      BSONDocument(sortBy :_*)
+      BSONDocument(sortBy.toStream)
     }
   }
 }
