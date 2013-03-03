@@ -1,22 +1,22 @@
 package controllers
 
-import models._
-import org.joda.time._
-import play.api._
-import play.api.libs.iteratee._
-import play.api.mvc._
+import scala.concurrent.Future
+
+import org.joda.time.DateTime
+
+import models.Article
+import models.Article._
+import play.api.Logger
 import play.api.Play.current
-import play.modules.reactivemongo._
-import scala.concurrent.{ExecutionContext, Future}
-import reactivemongo.api._
-import reactivemongo.api.gridfs._
+import play.api.mvc._
+import play.modules.reactivemongo.{MongoController, ReactiveMongoPlugin}
+import reactivemongo.api.gridfs.GridFS
+import reactivemongo.api.gridfs.Implicits.DefaultReadFileReader
 import reactivemongo.bson._
-import reactivemongo.bson.DefaultBSONHandlers._
-import reactivemongo.bson.handlers.DefaultBSONHandlers.DefaultBSONDocumentWriter
-import java.io.ByteArrayOutputStream
 
 object Articles extends Controller with MongoController {
   val db = ReactiveMongoPlugin.db
+  // get the collection 'articles'
   val collection = db("articles")
   // a GridFS store named 'attachments'
   val gridFS = new GridFS(db, "attachments")
@@ -30,16 +30,15 @@ object Articles extends Controller with MongoController {
   // list all articles and sort them
   def index = Action { implicit request =>
     Async {
-      implicit val reader = Article.ArticleBSONReader
+      // get a sort document (see getSort method for more information)
       val sort = getSort(request)
       // build a selection document with an empty query and a sort subdocument ('$orderby')
       val query = BSONDocument(
         "$orderby" -> sort,
-        "$query" -> BSONDocument()
-      )
+        "$query" -> BSONDocument())
       val activeSort = request.queryString.get("sort").flatMap(_.headOption).getOrElse("none")
       // the future cursor of documents
-      val found = collection.find(query)
+      val found = collection.find(query).cursor[Article]
       // build (asynchronously) a list containing all the articles
       found.toList.map { articles =>
         Ok(views.html.articles(articles, activeSort))
@@ -52,17 +51,15 @@ object Articles extends Controller with MongoController {
   }
 
   def showEditForm(id: String) = Action {
-    implicit val reader = Article.ArticleBSONReader
-
     Async {
       val objectId = new BSONObjectID(id)
       // get the documents having this id (there will be 0 or 1 result)
-      val cursor = collection.find(BSONDocument("_id" -> objectId))
+      val futureArticle = collection.find(BSONDocument("_id" -> objectId)).one[Article]
       // ... so we get optionally the matching article, if any
       // let's use for-comprehensions to compose futures (see http://doc.akka.io/docs/akka/2.0.3/scala/futures.html#For_Comprehensions for more information)
       for {
         // get a future option of article
-        maybeArticle <- cursor.headOption
+        maybeArticle <- futureArticle
         // if there is some article, return a future of result with the article and its attachments
         result <- maybeArticle.map { article =>
           import reactivemongo.api.gridfs.Implicits.DefaultReadFileReader
@@ -84,11 +81,9 @@ object Articles extends Controller with MongoController {
       errors => Ok(views.html.editArticle(None, errors, None)),
       // if no error, then insert the article into the 'articles' collection
       article => AsyncResult {
-        collection.insert(article.copy(creationDate = Some(new DateTime()), updateDate = Some(new DateTime()))).map( _ =>
-          Redirect(routes.Articles.index)
-        )
-      }
-    )
+        collection.insert(article.copy(creationDate = Some(new DateTime()), updateDate = Some(new DateTime()))).map(_ =>
+          Redirect(routes.Articles.index))
+      })
   }
 
   def edit(id: String) = Action { implicit request =>
@@ -108,13 +103,11 @@ object Articles extends Controller with MongoController {
         collection.update(BSONDocument("_id" -> objectId), modifier).map { _ =>
           Redirect(routes.Articles.index)
         }
-      }
-    )
+      })
   }
 
   def delete(id: String) = Action {
     Async {
-      import reactivemongo.api.gridfs.Implicits.DefaultReadFileReader
       // let's collect all the attachments matching that match the article to delete
       gridFS.find(BSONDocument("article" -> new BSONObjectID(id))).toList.flatMap { files =>
         // for each attachment, delete their chunks and then their file entry
@@ -125,17 +118,14 @@ object Articles extends Controller with MongoController {
       }.flatMap { _ =>
         // now, the last operation: remove the article
         collection.remove(BSONDocument("_id" -> new BSONObjectID(id)))
-      }.map(_ => Ok).recover { case _ => InternalServerError}
+      }.map(_ => Ok).recover { case _ => InternalServerError }
     }
   }
 
   // save the uploaded file as an attachment of the article with the given id
   def saveAttachment(id: String) = Action(gridFSBodyParser(gridFS)) { request =>
-    // the reader that allows the 'find' method to return a future Cursor[Article]
-    implicit val reader = Article.ArticleBSONReader
     // first, get the attachment matching the given id, and get the first result (if any)
-    val cursor = collection.find(BSONDocument("_id" -> new BSONObjectID(id)))
-    val uploaded = cursor.headOption
+    val uploaded = collection.find(BSONDocument("_id" -> new BSONObjectID(id))).one[Article]
 
     val futureUpload = for {
       // we filter the future to get it successful only if there is a matching Article
@@ -157,7 +147,6 @@ object Articles extends Controller with MongoController {
 
   def getAttachment(id: String) = Action {
     Async {
-      import reactivemongo.api.gridfs.Implicits.DefaultReadFileReader
       // find the matching attachment, if any, and streams it to the client
       val file = gridFS.find(BSONDocument("_id" -> new BSONObjectID(id)))
       serve(gridFS, file)
@@ -174,7 +163,7 @@ object Articles extends Controller with MongoController {
     request.queryString.get("sort").map { fields =>
       val sortBy = for {
         order <- fields.map { field =>
-          if(field.startsWith("-"))
+          if (field.startsWith("-"))
             field.drop(1) -> -1
           else field -> 1
         }
