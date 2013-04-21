@@ -8,7 +8,6 @@ import play.api.data.format.Formats._
 import play.api.data.validation.Constraints._
 
 import reactivemongo.bson._
-import reactivemongo.bson.handlers._
 
 case class Article(
   id: Option[BSONObjectID],
@@ -21,20 +20,19 @@ case class Article(
 // Turn off your mind, relax, and float downstream
 // It is not dying...
 object Article {
-  implicit object ArticleBSONReader extends BSONReader[Article] {
-    def fromBSON(document: BSONDocument) :Article = {
-      val doc = document.toTraversable
+
+  implicit object ArticleBSONReader extends BSONDocumentReader[Article] {
+    def read(doc: BSONDocument) =
       Article(
         doc.getAs[BSONObjectID]("_id"),
-        doc.getAs[BSONString]("title").get.value,
-        doc.getAs[BSONString]("content").get.value,
-        doc.getAs[BSONString]("publisher").get.value,
+        doc.getAs[String]("title").get,
+        doc.getAs[String]("content").get,
+        doc.getAs[String]("publisher").get,
         doc.getAs[BSONDateTime]("creationDate").map(dt => new DateTime(dt.value)),
         doc.getAs[BSONDateTime]("updateDate").map(dt => new DateTime(dt.value)))
-    }
   }
-  implicit object ArticleBSONWriter extends BSONWriter[Article] {
-    def toBSON(article: Article) = {
+  implicit object ArticleBSONWriter extends BSONDocumentWriter[Article] {
+    def write(article: Article) =
       BSONDocument(
         "_id" -> article.id.getOrElse(BSONObjectID.generate),
         "title" -> BSONString(article.title),
@@ -42,7 +40,6 @@ object Article {
         "publisher" -> BSONString(article.publisher),
         "creationDate" -> article.creationDate.map(date => BSONDateTime(date.getMillis)),
         "updateDate" -> article.updateDate.map(date => BSONDateTime(date.getMillis)))
-    }
   }
   val form = Form(
     mapping(
