@@ -11,12 +11,11 @@ import scala.concurrent.{ExecutionContext, Future}
 import reactivemongo.api._
 import reactivemongo.api.gridfs._
 import reactivemongo.bson._
-import reactivemongo.bson.handlers.DefaultBSONHandlers.DefaultBSONDocumentWriter
-import reactivemongo.bson.handlers.DefaultBSONHandlers.DefaultBSONReaderHandler
 import java.io.ByteArrayOutputStream
+import reactivemongo.api.gridfs.Implicits._
 
 object Articles extends Controller with MongoController {
-  val db = ReactiveMongoPlugin.db
+  override val db = ReactiveMongoPlugin.db
   val collection = db("articles")
   // a GridFS store named 'attachments'
   val gridFS = new GridFS(db, "attachments")
@@ -39,7 +38,7 @@ object Articles extends Controller with MongoController {
       )
       val activeSort = request.queryString.get("sort").flatMap(_.headOption).getOrElse("none")
       // the future cursor of documents
-      val found = collection.find(query)
+      val found = collection.find(query).cursor[Article]
       // build (asynchronously) a list containing all the articles
       found.toList.map { articles =>
         Ok(views.html.articles(articles, activeSort))
@@ -57,7 +56,7 @@ object Articles extends Controller with MongoController {
     Async {
       val objectId = new BSONObjectID(id)
       // get the documents having this id (there will be 0 or 1 result)
-      val cursor = collection.find(BSONDocument("_id" -> objectId))
+      val cursor = collection.find(BSONDocument("_id" -> objectId)).cursor[Article]
       // ... so we get optionally the matching article, if any
       // let's use for-comprehensions to compose futures (see http://doc.akka.io/docs/akka/2.0.3/scala/futures.html#For_Comprehensions for more information)
       for {
@@ -134,7 +133,7 @@ object Articles extends Controller with MongoController {
     // the reader that allows the 'find' method to return a future Cursor[Article]
     implicit val reader = Article.ArticleBSONReader
     // first, get the attachment matching the given id, and get the first result (if any)
-    val cursor = collection.find(BSONDocument("_id" -> new BSONObjectID(id)))
+    val cursor = collection.find(BSONDocument("_id" -> new BSONObjectID(id))).cursor[Article]
     val uploaded = cursor.headOption
 
     val futureUpload = for {
@@ -155,12 +154,15 @@ object Articles extends Controller with MongoController {
     }
   }
 
-  def getAttachment(id: String) = Action {
+  def getAttachment(id: String) = Action { request =>
     Async {
       import reactivemongo.api.gridfs.Implicits.DefaultReadFileReader
       // find the matching attachment, if any, and streams it to the client
       val file = gridFS.find(BSONDocument("_id" -> new BSONObjectID(id)))
-      serve(gridFS, file)
+      request.getQueryString("inline") match {
+      	case Some("true") => serve(gridFS, file, CONTENT_DISPOSITION_INLINE)
+      	case _ => serve(gridFS, file)
+      }
     }
   }
 
@@ -180,7 +182,7 @@ object Articles extends Controller with MongoController {
         }
         if order._1 == "title" || order._1 == "publisher" || order._1 == "creationDate" || order._1 == "updateDate"
       } yield order._1 -> BSONInteger(order._2)
-      BSONDocument(sortBy :_*)
+      BSONDocument(sortBy)
     }
   }
 }
