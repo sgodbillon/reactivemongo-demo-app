@@ -1,4 +1,4 @@
-# MongoDB with ReactiveMongo : a Sample App
+# MongoDB with ReactiveMongo: a Sample App
 
 This is a sample app to show in a few lines of code how MongoDB can be used to build a simple (yet full featured) web application.
 
@@ -6,7 +6,7 @@ This example use the following:
 * MongoDB (*yeah, no kidding*)
 * ReactiveMongo, a non-blocking and asynchronous Scala driver for MongoDB
 * Play 2.1 as a web framework
-* Play ReactiveMongo module
+* Play ReactiveMongo plugin
 
 This application manages articles. An article has a title, a text content and a publisher. The articles can be updated and sorted by title, publisher, creation/update date, etc. One or more attachments can be uploaded and bound to an article (like an image, a pdf, an archive...). All the classic CRUD operations are implemented.
 
@@ -42,11 +42,11 @@ But the real power of MongoDB is that it is very scalable. It is very easy to ad
 Queries are written in BSON (binary JSON). An empty query matches all the documents that are stored in the collection.
 
 ```scala
-val collection = db("articles")
+val collection = db[BSONCollection]("articles")
 // empty query will match all documents by default
 val query = BSONDocument()
 // run this query over the collection
-val cursor = collection.find(query)
+val cursor = collection.find(query).cursor[BSONDocument]
 // got the list of documents (in a fully non-blocking way)
 val futureList = cursor.toList
 ```
@@ -54,10 +54,10 @@ val futureList = cursor.toList
 If we want to get only the documents that have a field *publisher* which value is *Stephane*, we may just write the following query:
 
 ```scala
-val query = BSONDocument("publisher" -> BSONString("Stephane"))
+val query = BSONDocument("publisher" -> "Stephane")
 // run this query over the collection
-val articlesPublishedByStephane = collection.find(query)
-val futureListOfArticlesPublishedByStephane :Future[List[Article]] = articlesPublishedByStephane.toList
+val articlesPublishedByStephane = collection.find(query).cursor[Article]
+val futureListOfArticlesPublishedByStephane: Future[List[Article]] = articlesPublishedByStephane.toList
 ```
 
 In JSON, the query would look like this:
@@ -66,6 +66,14 @@ In JSON, the query would look like this:
 {
   "publisher": "Stephane"
 }
+```
+
+If we just want to get the first matching document, we can use the `one` method which returns a future option:
+
+```scala
+val query = BSONDocument("publisher" -> "Stephane")
+// run this query over the collection
+val articlePublishedByStephane: Future[Option[Article]] = collection.find(query).one[Article]
 ```
 
 ### Sort a Query
@@ -89,10 +97,10 @@ Which gives with ReactiveMongo:
 // build a selection document with an empty query and a sort subdocument ('$orderby')
 val query = BSONDocument(
   "$orderby" -> BSONDocument(
-    "creationDate" -> BSONInteger(1)
+    "creationDate" -> 1
   ),
   "$query" -> BSONDocument(
-    "publisher" -> BSONString("Stephane")
+    "publisher" -> "Stephane"
   )
 )
 ```
@@ -100,9 +108,9 @@ val query = BSONDocument(
 The query is run this way:
 
 ```scala
-val cursor = collection.find(query) // a cursor over the results
+val cursor = collection.find(query).cursor[Article] // a cursor over the results, deserialized as Article instances
 // build (asynchronously) a list containing all the articles
-val futureListOfArticles :Future[List[Article]] = cursor.toList
+val futureListOfArticles: Future[List[Article]] = cursor.toList
 futureListOfArticles.onSuccess { articles =>
   for(article <- articles)
     println("found article: " + article)
@@ -111,6 +119,24 @@ futureListOfArticles.onSuccess { articles =>
 
 This will find all the articles published by Stephane and order the results by the creationDate (the oldest comes first).
 The original query is encapsulated in a `$query` subdocument, and the sort criteria is in an object named `$orderby`.
+
+#### Sort using the query builder
+
+There is a query builder that helps to make queries simpler, providing useful methods like `sort` and `projection`. We can also rewrite the previous snippet like this:
+
+```scala
+val cursor = collection.
+               find(BSONDocument("publisher" -> "Stephane")).
+               sort(BSONDocument("creationDate" -> 1)).
+               cursor[Article] // a cursor over the results, deserialized as Article instances
+// build (asynchronously) a list containing all the articles
+val futureListOfArticles: Future[List[Article]] = cursor.toList
+futureListOfArticles.onSuccess { articles =>
+  for(article <- articles)
+    println("found article: " + article)
+}
+```
+
 
 ### Update
 
@@ -122,25 +148,25 @@ Consider the following example (we modify an article that has a certain id):
 
 ```scala
 val id = "50181f15e0f8477d00a5859e"
-val objectId = new BSONObjectID(id)
+val objectId = BSONObjectID(id)
 // create a modifier document, ie a document that contains the update operations to run onto the documents matching the query
 val modifier = BSONDocument(
   // this modifier will set the fields 'updateDate', 'title', 'content', and 'publisher'
   "$set" -> BSONDocument(
     "updateDate" -> BSONDateTime(new DateTime().getMillis),
-    "title" -> BSONString("a new title"),
-    "content" -> BSONString("a new text content"),
-    "publisher" -> BSONString("Jack"))
+    "title" -> "a new title",
+    "content" -> "a new text content",
+    "publisher" -> "Jack")
 )
 // ok, let's do the update
 collection.update(BSONDocument("_id" -> objectId), modifier).onComplete {
-  case Left(e) => throw e
-  case Right(lastError) => println("successful!")
+  case Failure(e) => throw e
+  case Success(_) => println("successful!")
 }
 ```
 
 The modifier in pseudo-JSON would be:
-```json
+```javascript
 {
   "$set": {
     "updateDate": new Date(),
@@ -157,9 +183,9 @@ Deletion is done the same way:
 
 ```scala
 val id = "50181f15e0f8477d00a5859e"
-collection.remove(BSONDocument("_id" -> new BSONObjectID(id)).onComplete {
-  case Left(e) => throw e
-  case Right(lastError) => println("successful!")
+collection.remove(BSONDocument("_id" -> BSONObjectID(id)).onComplete {
+  case Failure(e) => throw e
+  case Success(_) => println("successful!")
 }
 ```
 
@@ -180,16 +206,17 @@ GridFS is very simple in its approach: the files are cut into chunks that are wr
 ReactiveMongo allows to stream those files from and into GridFS, in a non-blocking way. Let's take a look to an example:
 
 ```scala
+import java.io.{File, FileInputStream}
+import reactivemongo.api.gridfs._
+
 val name = "archive.zip"
 val contentType = "application/octet-stream"
 val gridFS = new GridFS(db, "attachments")
-/* an iteratee (a consumer) that will get chunks of byte from a enumerator (producer)
- * and will store them into the attachments.chunks collection. */
-val iteratee = gridFS.save(name, None, contentType)
-// an enumerator (producer of chunks), which chunks come from a file on the filesystem
-val enumerator = Enumerator.fromFile("/Users/sgo/archive.zip", 262144)
-// apply this enumerator to the iteratee
-enumerator.apply(iteratee)
+
+val fileToSave = DefaultFileToSave("archive.zip", Some(contentType))
+
+// returns a future which is completed when the upload is done
+val futureResult: Future[ReadFile[BSONValue]] = gridFS.writeFromInputStream(fileToSave new FileInputStream(new File(name)))
 ```
 
 ## About the Web Application
