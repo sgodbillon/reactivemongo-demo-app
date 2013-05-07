@@ -20,7 +20,7 @@ case class Article(
 // It is not dying...
 object Article {
   implicit object ArticleBSONReader extends BSONDocumentReader[Article] {
-    def read(doc: BSONDocument): Article = {
+    def read(doc: BSONDocument): Article =
       Article(
         doc.getAs[BSONObjectID]("_id"),
         doc.getAs[String]("title").get,
@@ -28,10 +28,9 @@ object Article {
         doc.getAs[String]("publisher").get,
         doc.getAs[BSONDateTime]("creationDate").map(dt => new DateTime(dt.value)),
         doc.getAs[BSONDateTime]("updateDate").map(dt => new DateTime(dt.value)))
-    }
   }
   implicit object ArticleBSONWriter extends BSONDocumentWriter[Article] {
-    def write(article: Article) = {
+    def write(article: Article): BSONDocument =
       BSONDocument(
         "_id" -> article.id.getOrElse(BSONObjectID.generate),
         "title" -> article.title,
@@ -39,7 +38,6 @@ object Article {
         "publisher" -> article.publisher,
         "creationDate" -> article.creationDate.map(date => BSONDateTime(date.getMillis)),
         "updateDate" -> article.updateDate.map(date => BSONDateTime(date.getMillis)))
-    }
   }
   val form = Form(
     mapping(

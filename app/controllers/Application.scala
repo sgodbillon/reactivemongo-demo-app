@@ -170,11 +170,14 @@ object Articles extends Controller with MongoController {
     }
   }
 
-  def getAttachment(id: String) = Action {
+  def getAttachment(id: String) = Action { request =>
     Async {
       // find the matching attachment, if any, and streams it to the client
       val file = gridFS.find(BSONDocument("_id" -> new BSONObjectID(id)))
-      serve(gridFS, file)
+      request.getQueryString("inline") match {
+        case Some("true") => serve(gridFS, file, CONTENT_DISPOSITION_INLINE)
+        case _            => serve(gridFS, file)
+      }
     }
   }
 
@@ -194,7 +197,7 @@ object Articles extends Controller with MongoController {
         }
         if order._1 == "title" || order._1 == "publisher" || order._1 == "creationDate" || order._1 == "updateDate"
       } yield order._1 -> BSONInteger(order._2)
-      BSONDocument(sortBy.toStream)
+      BSONDocument(sortBy)
     }
   }
 }
