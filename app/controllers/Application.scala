@@ -1,25 +1,27 @@
 package controllers
 
+import org.joda.time.DateTime
 import scala.concurrent.Future
 
-import org.joda.time.DateTime
-
-import models.Article
-import models.Article._
 import play.api.Logger
 import play.api.Play.current
 import play.api.mvc._
-import play.modules.reactivemongo.{MongoController, ReactiveMongoPlugin}
+import play.modules.reactivemongo.{ MongoController, ReactiveMongoPlugin }
+
 import reactivemongo.api.gridfs.GridFS
 import reactivemongo.api.gridfs.Implicits.DefaultReadFileReader
+import reactivemongo.api.collections.default.BSONCollection
 import reactivemongo.bson._
 
+import models.Article
+import models.Article._
+
 object Articles extends Controller with MongoController {
-  val db = ReactiveMongoPlugin.db
   // get the collection 'articles'
-  val collection = db("articles")
+  val collection = db[BSONCollection]("articles")
   // a GridFS store named 'attachments'
-  val gridFS = new GridFS(db, "attachments")
+  //val gridFS = new GridFS(db, "attachments")
+  val gridFS = new GridFS(db)
 
   // let's build an index on our gridfs chunks collection if none
   gridFS.ensureIndex().onComplete {
@@ -42,6 +44,10 @@ object Articles extends Controller with MongoController {
       // build (asynchronously) a list containing all the articles
       found.toList.map { articles =>
         Ok(views.html.articles(articles, activeSort))
+      }.recover {
+        case e =>
+          e.printStackTrace()
+          BadRequest(e.getMessage())
       }
     }
   }
@@ -124,6 +130,25 @@ object Articles extends Controller with MongoController {
 
   // save the uploaded file as an attachment of the article with the given id
   def saveAttachment(id: String) = Action(gridFSBodyParser(gridFS)) { request =>
+    // here is the future file!
+    val futureFile = request.body.files.head.ref
+    // when the upload is complete, we add the article id to the file entry (in order to find the attachments of the article)
+    val futureUpdate = for {
+      file <- futureFile
+      // here, the file is completely uploaded, so it is time to update the article
+      updateResult <- {
+        gridFS.files.update(
+          BSONDocument("_id" -> file.id),
+          BSONDocument("$set" -> BSONDocument("article" -> BSONObjectID(id))))
+      }
+    } yield updateResult
+
+    futureUpdate.map {
+      case _ => Redirect(routes.Articles.showEditForm(id))
+    }.recover {
+      case e => InternalServerError(e.getMessage())
+    }
+
     // first, get the attachment matching the given id, and get the first result (if any)
     val uploaded = collection.find(BSONDocument("_id" -> new BSONObjectID(id))).one[Article]
 
