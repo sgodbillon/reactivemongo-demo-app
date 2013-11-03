@@ -143,29 +143,11 @@ object Articles extends Controller with MongoController {
       }
     } yield updateResult
 
-    futureUpdate.map {
-      case _ => Redirect(routes.Articles.showEditForm(id))
-    }.recover {
-      case e => InternalServerError(e.getMessage())
-    }
-
-    // first, get the attachment matching the given id, and get the first result (if any)
-    val uploaded = collection.find(BSONDocument("_id" -> new BSONObjectID(id))).one[Article]
-
-    val futureUpload = for {
-      // we filter the future to get it successful only if there is a matching Article
-      article <- uploaded.filter(_.isDefined).map(_.get)
-      // we wait (non-blocking) for the upload to complete.
-      putResult <- request.body.files.head.ref
-      // when the upload is complete, we add the article id to the file entry (in order to find the attachments of the article)
-      result <- gridFS.files.update(BSONDocument("_id" -> putResult.id), BSONDocument("$set" -> BSONDocument("article" -> article.id.get)))
-    } yield result
-
     Async {
-      futureUpload.map {
+      futureUpdate.map {
         case _ => Redirect(routes.Articles.showEditForm(id))
       }.recover {
-        case _ => BadRequest
+        case e => InternalServerError(e.getMessage())
       }
     }
   }
