@@ -9,10 +9,10 @@ object ApplicationBuild extends Build {
   scalaVersion := "2.10.2"
 
   val appDependencies = Seq(
-    "org.reactivemongo" %% "play2-reactivemongo" % "0.10.0-SNAPSHOT")
+    "org.reactivemongo" %% "play2-reactivemongo" % "0.10.0")
 
   val main = play.Project(appName, appVersion, appDependencies).settings(
-    resolvers += "Sonatype snapshots" at "http://oss.sonatype.org/content/repositories/snapshots/"
+    resolvers += "Sonatype OSS Releases" at "http://oss.sonatype.org/content/repositories/releases"
       // settings
   )
 
