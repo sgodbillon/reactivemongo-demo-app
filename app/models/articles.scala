@@ -51,7 +51,7 @@ object Article {
       "creationDate" -> optional(of[Long]),
       "updateDate" -> optional(of[Long])) { (id, title, content, publisher, creationDate, updateDate) =>
         Article(
-          id.map(new BSONObjectID(_)),
+          id.map(BSONObjectID(_)),
           title,
           content,
           publisher,
