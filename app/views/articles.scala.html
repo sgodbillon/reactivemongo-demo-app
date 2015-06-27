@@ -23,7 +23,7 @@
       } else {
       <ul>
       @articles.map { article =>
-        <li><a href="@routes.Articles.showEditForm(article.id.get.stringify)">@article.title</a> <em>by @article.publisher</em> (last modified : @article.updateDate.map(u => org.joda.time.format.DateTimeFormat.forPattern("MMM dd, yyyy").print(u)).orElse(Some("n/a"))) - <a href="@routes.Articles.delete(article.id.get.stringify)" class="delete">delete</a></li>
+        <li><a href="@routes.Articles.showEditForm(article.id.get)">@article.title</a> <em>by @article.publisher</em> (last modified : @article.updateDate.map(u => org.joda.time.format.DateTimeFormat.forPattern("MMM dd, yyyy").print(u)).orElse(Some("n/a"))) - <a href="@routes.Articles.delete(article.id.get)" class="delete">delete</a></li>
       }
       </ul>
       }
