@@ -1,7 +1,6 @@
-@(id: Option[String], form: Form[models.Article], files: Option[List[(String, reactivemongo.api.gridfs.ReadFile[reactivemongo.bson.BSONValue])]])
-@import helper.twitterBootstrap._
+@(id: Option[String], form: Form[models.Article], files: Option[List[(play.api.libs.json.JsString, reactivemongo.api.gridfs.ReadFile[play.modules.reactivemongo.json.JSONSerializationPack.type, play.api.libs.json.JsString])]])(implicit lang: play.api.i18n.Messages)
 
-@main("Welcome to Play 2.0") {
+@main("Welcome to ReactiveMongo on Play 2.4") {
   <div class="row">
   <div class="span8">
   <h2>
@@ -25,7 +24,7 @@
     @if(files.isDefined) {
     <ul>
       @files.get.map { file =>
-      <li><a href="@routes.Articles.getAttachment(file._1)">@file._2.filename</a> - <a target="_blank" href="@routes.Articles.getAttachment(file._1)?inline=true">inline</a> - <a class="delete" href="@routes.Articles.removeAttachment(file._1)">delete</a></li>
+      <li><a href="@routes.Articles.getAttachment(file._1.value)">@file._2.filename</a> - <a target="_blank" href="@routes.Articles.getAttachment(file._1.value)?inline=true">inline</a> - <a class="delete" href="@routes.Articles.removeAttachment(file._1.value)">delete</a></li>
       }
     </ul>
     }
