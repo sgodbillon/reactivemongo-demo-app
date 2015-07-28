@@ -19,7 +19,7 @@ import play.modules.reactivemongo.{
   MongoController, ReactiveMongoApi, ReactiveMongoComponents
 }
 
-import play.modules.reactivemongo.json._, ImplicitBSONHandlers._
+import play.modules.reactivemongo.json._
 import play.modules.reactivemongo.json.collection._
 
 import models.Article, Article._
@@ -61,7 +61,7 @@ class Articles @Inject() (
       flatMap(_.headOption).getOrElse("none")
 
     // the cursor of documents
-    val found = collection.find(query).cursor[Article]
+    val found = collection.find(query).cursor[Article]()
     // build (asynchronously) a list containing all the articles
     found.collect[List]().map { articles =>
       Ok(views.html.articles(articles, activeSort))
