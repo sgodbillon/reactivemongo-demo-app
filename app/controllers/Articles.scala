@@ -4,10 +4,10 @@ import javax.inject.Inject
 
 import org.joda.time.DateTime
 
-import scala.concurrent.Future
+import scala.concurrent.{ Await, Future, duration }, duration.Duration
 
 import play.api.Logger
-import play.api.Play.current
+
 import play.api.i18n.{ I18nSupport, MessagesApi }
 import play.api.mvc.{ Action, Controller, Request }
 import play.api.libs.concurrent.Execution.Implicits.defaultContext
@@ -19,8 +19,8 @@ import play.modules.reactivemongo.{
   MongoController, ReactiveMongoApi, ReactiveMongoComponents
 }
 
-import play.modules.reactivemongo.json._, ImplicitBSONHandlers._
-import play.modules.reactivemongo.json.collection._
+import reactivemongo.play.json._
+import reactivemongo.play.json.collection._
 
 import models.Article, Article._
 
@@ -35,17 +35,19 @@ class Articles @Inject() (
   type JSONReadFile = ReadFile[JSONSerializationPack.type, JsString]
 
   // get the collection 'articles'
-  val collection = db[JSONCollection]("articles")
+  def collection = reactiveMongoApi.database.
+    map(_.collection[JSONCollection]("articles"))
 
   // a GridFS store named 'attachments'
   //val gridFS = GridFS(db, "attachments")
-  private val gridFS = reactiveMongoApi.gridFS
-
-  // let's build an index on our gridfs chunks collection if none
-  gridFS.ensureIndex().onComplete {
-    case index =>
+  private val gridFS = for {
+    fs <- reactiveMongoApi.database.map(db =>
+      GridFS[JSONSerializationPack.type](db))
+    _ <- fs.ensureIndex().map { index =>
+      // let's build an index on our gridfs chunks collection if none
       Logger.info(s"Checked index, result is $index")
-  }
+    }
+  } yield fs
 
   // list all articles and sort them
   def index = Action.async { implicit request =>
@@ -61,9 +63,10 @@ class Articles @Inject() (
       flatMap(_.headOption).getOrElse("none")
 
     // the cursor of documents
-    val found = collection.find(query).cursor[Article]
+    val found = collection.map(_.find(query).cursor[Article]())
+
     // build (asynchronously) a list containing all the articles
-    found.collect[List]().map { articles =>
+    found.flatMap(_.collect[List]()).map { articles =>
       Ok(views.html.articles(articles, activeSort))
     }.recover {
       case e =>
@@ -80,28 +83,30 @@ class Articles @Inject() (
 
   def showEditForm(id: String) = Action.async { request =>
     // get the documents having this id (there will be 0 or 1 result)
-    val futureArticle = collection.find(Json.obj("_id" -> id)).one[Article]
+    def futureArticle = collection.flatMap(
+      _.find(Json.obj("_id" -> id)).one[Article])
+
     // ... so we get optionally the matching article, if any
-    // let's use for-comprehensions to compose futures (see http://doc.akka.io/docs/akka/2.0.3/scala/futures.html#For_Comprehensions for more information)
+    // let's use for-comprehensions to compose futures
     for {
       // get a future option of article
       maybeArticle <- futureArticle
       // if there is some article, return a future of result with the article and its attachments
+      fs <- gridFS
       result <- maybeArticle.map { article =>
         // search for the matching attachments
-        // find(...).toList returns a future list of documents (here, a future list of ReadFileEntry)
-        gridFS.find[JsObject, JSONReadFile](
+        // find(...).toList returns a future list of documents
+        // (here, a future list of ReadFileEntry)
+        fs.find[JsObject, JSONReadFile](
           Json.obj("article" -> article.id.get)).collect[List]().map { files =>
-          val filesWithId = files.map { file =>
-            file.id -> file
-          }
 
+          @inline def filesWithId = files.map { file => file.id -> file }
           implicit val messages = messagesApi.preferred(request)
           
           Ok(views.html.editArticle(Some(id),
             Article.form.fill(article), Some(filesWithId)))
         }
-      }.getOrElse(Future(NotFound))
+      }.getOrElse(Future.successful(NotFound))
     } yield result
   }
 
@@ -113,11 +118,11 @@ class Articles @Inject() (
         Ok(views.html.editArticle(None, errors, None))),
 
       // if no error, then insert the article into the 'articles' collection
-      article => collection.insert(article.copy(
+      article => collection.flatMap(_.insert(article.copy(
         id = article.id.orElse(Some(UUID.randomUUID().toString)),
         creationDate = Some(new DateTime()),
         updateDate = Some(new DateTime()))
-      ).map(_ => Redirect(routes.Articles.index))
+      )).map(_ => Redirect(routes.Articles.index))
     )
   }
 
@@ -141,28 +146,35 @@ class Articles @Inject() (
             "publisher" -> article.publisher))
 
         // ok, let's do the update
-        collection.update(Json.obj("_id" -> id), modifier).
-          map { _ => Redirect(routes.Articles.index) }
+        collection.flatMap(_.update(Json.obj("_id" -> id), modifier).
+          map { _ => Redirect(routes.Articles.index) })
       })
   }
 
   def delete(id: String) = Action.async {
     // let's collect all the attachments matching that match the article to delete
-    gridFS.find[JsObject, JSONReadFile](Json.obj("article" -> id)).
-      collect[List]().flatMap { files =>
+    (for {
+      fs <- gridFS
+      files <- fs.find[JsObject, JSONReadFile](
+        Json.obj("article" -> id)).collect[List]()
+      _ <- {
         // for each attachment, delete their chunks and then their file entry
-        val deletions = files.map(gridFS.remove(_))
+        def deletions = files.map(fs.remove(_))
 
         Future.sequence(deletions)
-      }.flatMap { _ =>
+      }
+      coll <- collection
+      _ <- {
         // now, the last operation: remove the article
-        collection.remove(Json.obj("_id" -> id))
-      }.map(_ => Ok).recover { case _ => InternalServerError }
+        coll.remove(Json.obj("_id" -> id))
+      }
+    } yield Ok).recover { case _ => InternalServerError }
   }
 
   // save the uploaded file as an attachment of the article with the given id
-  def saveAttachment(id: String) =
-    Action.async(gridFSBodyParser(gridFS)) { request =>
+  def saveAttachment(id: String) = {
+    def fs = Await.result(gridFS, Duration("5s"))
+    Action.async(gridFSBodyParser(fs)) { request =>
       // here is the future file!
       val futureFile = request.body.files.head.ref
 
@@ -172,38 +184,36 @@ class Articles @Inject() (
 
       // when the upload is complete, we add the article id to the file entry (in order to find the attachments of the article)
       val futureUpdate = for {
-        file <- { println("_0"); futureFile }
+        file <- futureFile
         // here, the file is completely uploaded, so it is time to update the article
-        updateResult <- {
-          println("_1")
-          gridFS.files.update(
-            Json.obj("_id" -> file.id),
-            Json.obj("$set" -> Json.obj("article" -> id)))
-        }
-      } yield updateResult
+        updateResult <- fs.files.update(
+          Json.obj("_id" -> file.id),
+          Json.obj("$set" -> Json.obj("article" -> id)))
+      } yield Redirect(routes.Articles.showEditForm(id))
 
-      futureUpdate.map { _ =>
-        Redirect(routes.Articles.showEditForm(id))
-      }.recover {
+      futureUpdate.recover {
         case e => InternalServerError(e.getMessage())
       }
     }
+  }
 
   def getAttachment(id: String) = Action.async { request =>
-    // find the matching attachment, if any, and streams it to the client
-    val file = gridFS.find[JsObject, JSONReadFile](Json.obj("_id" -> id))
+    gridFS.flatMap { fs =>
+      // find the matching attachment, if any, and streams it to the client
+      val file = fs.find[JsObject, JSONReadFile](Json.obj("_id" -> id))
 
-    request.getQueryString("inline") match {
-      case Some("true") =>
-        serve[JsString, JSONReadFile](gridFS)(file, CONTENT_DISPOSITION_INLINE)
+      request.getQueryString("inline") match {
+        case Some("true") =>
+          serve[JsString, JSONReadFile](fs)(file, CONTENT_DISPOSITION_INLINE)
 
-      case _            => serve[JsString, JSONReadFile](gridFS)(file)
+        case _            => serve[JsString, JSONReadFile](fs)(file)
+      }
     }
   }
 
   def removeAttachment(id: String) = Action.async {
-    gridFS.remove(Json toJson id).map(_ => Ok).
-      recover { case _ => InternalServerError }
+    gridFS.flatMap(_.remove(Json toJson id).map(_ => Ok).
+      recover { case _ => InternalServerError })
   }
 
   private def getSort(request: Request[_]): Option[JsObject] =
